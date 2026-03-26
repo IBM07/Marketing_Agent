@@ -1,0 +1,52 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id        String      @id @default(uuid())
+  clerkId   String      @unique
+  email     String      @unique
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  workspaces Workspace[]
+}
+
+model Workspace {
+  id          String     @id @default(uuid())
+  name        String
+  description String?
+  userId      String
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campaigns   Campaign[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+model Campaign {
+  id          String      @id @default(uuid())
+  name        String
+  goal        String?
+  targetAudience String?
+  status      String      @default("DRAFT") // DRAFT, ACTIVE, COMPLETED
+  workspaceId String
+  workspace   Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  emailLogs   EmailLog[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+model EmailLog {
+  id         String   @id @default(uuid())
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  recipient  String
+  subject    String
+  content    String
+  status     String   @default("PENDING") // PENDING, SENT, FAILED
+  sentAt     DateTime?
+  createdAt  DateTime @default(now())
+}
