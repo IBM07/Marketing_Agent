@@ -66,6 +66,18 @@ export async function POST(req: Request) {
         },
       });
     }
+  } else if (eventType === 'user.deleted') {
+    const { id } = evt.data;
+
+    if (id) {
+      try {
+        await prisma.user.delete({
+          where: { clerkId: id },
+        });
+      } catch (error) {
+        console.error('Error deleting user:', error);
+      }
+    }
   }
 
   return new Response('Webhook received', { status: 200 });
