@@ -8,7 +8,7 @@ export async function POST(req: Request) {
       return new NextResponse("Unauthorized", { status: 401 });
     }
 
-    const { prompt, model = "llama3" } = await req.json();
+    const { prompt, model = "mistral-nemo" } = await req.json();
 
     if (!prompt) {
       return new NextResponse("Prompt is required", { status: 400 });
