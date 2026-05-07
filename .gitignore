@@ -27,9 +27,6 @@ yarn-error.log*
 
 # env file
 .env
-
-# local env files
-.env
 .env.local
 .env.*.local
 
@@ -39,3 +36,31 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# clerk configuration (can include secrets)
+/.clerk/
+
+# IDE and Editor files
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# pnpm
+pnpm-debug.log*
+
+# Test data / Local data
+*.csv
+/test csv/
