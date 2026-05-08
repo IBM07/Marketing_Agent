@@ -5,7 +5,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, Sparkles, Target, Rocket, Loader2, CheckCircle2, Users, Bot, Send, Upload } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import * as XLSX from "xlsx";
 
 export default function NewCampaign() {
   const router = useRouter();
@@ -33,8 +32,9 @@ export default function NewCampaign() {
     setFileName(file.name);
     const reader = new FileReader();
     
-    reader.onload = (evt) => {
+    reader.onload = async (evt) => {
       try {
+        const XLSX = await import("xlsx");
         const bstr = evt.target?.result;
         const wb = XLSX.read(bstr, { type: 'binary' });
         const wsname = wb.SheetNames[0];
@@ -63,6 +63,7 @@ export default function NewCampaign() {
     
     reader.readAsBinaryString(file);
   };
+
 
   const handleGenerate = async () => {
     setIsGenerating(true);

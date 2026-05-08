@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
+import { Groq } from "groq-sdk";
 
 export async function POST(req: Request) {
   try {
@@ -7,8 +8,7 @@ export async function POST(req: Request) {
     if (!userId) {
       return new NextResponse("Unauthorized", { status: 401 });
     }
-
-    const { prompt, model = "mistral-nemo" } = await req.json();
+    const { prompt, model = "llama-3.3-70b-versatile" } = await req.json();
 
     if (!prompt) {
       return new NextResponse("Prompt is required", { status: 400 });
@@ -38,40 +38,52 @@ Example JSON format:
   "body": "Building without code isn't a toy anymore. The Builder's Arsenal gives you production-ready frameworks, AI agent planning, and deep Cursor mastery to ship real SaaS on Day 1. Leave the backend complexity behind. https://the-builders-arsenal.vercel.app/ Worth a 2-min peek?"
 }`;
 
-    // Attempt to call local Ollama instance
-    const response = await fetch("http://localhost:11434/api/generate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model,
-        prompt: `${systemPrompt}\n\nProduct/Niche Details:\n${prompt}`,
-        stream: false,
-        format: "json",
-      }),
+    const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+
+    const completion = await groq.chat.completions.create({
+      model,
+      messages: [
+        {
+          role: "system",
+          content: systemPrompt,
+        },
+        {
+          role: "user",
+          content: `Product/Niche Details:\n${prompt}`,
+        },
+      ],
+      response_format: { type: "json_object" },
+      temperature: 1,
+      max_tokens: 1024,
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("[OLLAMA_ERROR]", errorText);
-      return new NextResponse("Failed to communicate with local Ollama. Ensure Ollama is running on localhost:11434.", { status: 502 });
+    const content = completion.choices[0]?.message?.content;
+    if (!content) {
+      console.error("[AI_GENERATE_POST] Empty response from Groq");
+      return new NextResponse("Failed to generate content from Groq", { status: 502 });
     }
 
-    const data = await response.json();
     let resultObj;
     try {
-      resultObj = JSON.parse(data.response);
-    } catch {
-      resultObj = { subject: "Action Required", body: data.response };
+      resultObj = JSON.parse(content);
+    } catch (parseError) {
+      console.error("[AI_GENERATE_POST] JSON parse error:", parseError);
+      return new NextResponse("Invalid JSON response from AI", { status: 502 });
     }
+
     return NextResponse.json(resultObj);
   } catch (error: unknown) {
     console.error("[AI_GENERATE_POST]", error);
-    if (error instanceof Error && 'cause' in error) {
-      const cause = error.cause as { code?: string };
-      if (cause?.code === 'ECONNREFUSED') {
-        return new NextResponse("Ollama is not running. Please start your local Ollama instance.", { status: 503 });
+    
+    if (error instanceof Error) {
+      if (error.message.includes("401") || error.message.includes("authentication")) {
+        return new NextResponse("Invalid or missing Groq API key", { status: 401 });
+      }
+      if (error.message.includes("rate_limit")) {
+        return new NextResponse("Groq API rate limit exceeded", { status: 429 });
       }
     }
-    return new NextResponse("Internal Error", { status: 500 });
+    
+    return new NextResponse("Internal Server Error", { status: 500 });
   }
 }

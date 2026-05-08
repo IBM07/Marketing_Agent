@@ -1,7 +1,15 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
+import { z } from "zod";
 import prisma from "@/lib/prisma";
 import { Resend } from "resend";
+
+const SendEmailSchema = z.object({
+  campaignId: z.string(),
+  recipients: z.array(z.string().email()).min(1, "At least one valid recipient is required"),
+  subject: z.string().min(1, "Subject is required"),
+  content: z.string().min(1, "Content is required"),
+});
 
 const resendApiKey = process.env.RESEND_API_KEY;
 const resend = resendApiKey ? new Resend(resendApiKey) : null;
@@ -13,11 +21,17 @@ export async function POST(req: Request) {
       return new NextResponse("Unauthorized", { status: 401 });
     }
 
-    const { campaignId, recipients, subject, content } = await req.json();
+    const body = await req.json();
+    const validation = SendEmailSchema.safeParse(body);
 
-    if (!campaignId || !recipients || !Array.isArray(recipients) || recipients.length === 0 || !subject || !content) {
-      return new NextResponse("Missing required fields", { status: 400 });
+    if (!validation.success) {
+      return NextResponse.json(
+        { error: "Validation failed", details: validation.error.format() },
+        { status: 400 }
+      );
     }
+
+    const { campaignId, recipients, subject, content } = validation.data;
 
     // Get DB user and verify ownership of the campaign's workspace
     const dbUser = await prisma.user.findUnique({
@@ -43,7 +57,7 @@ export async function POST(req: Request) {
         try {
           if (resend) {
             const { error } = await resend.emails.send({
-              from: "Acme <onboarding@resend.dev>", // Replace with verified domain in production
+              from: process.env.RESEND_FROM_EMAIL || "Acme <onboarding@resend.dev>",
               to: [recipient],
               subject: subject,
               html: content.replace(/\n/g, "<br>"),
