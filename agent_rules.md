@@ -1,6 +1,6 @@
 # Agent Rules — Antigravity Project
 
-> This file defines the behavioral guidelines, constraints, and operational rules for the **AI Coding Agent**. All rules must be followed strictly unless explicitly overridden by the system operator.
+> This file defines the behavioral guidelines, constraints, and operational rules which have to be followed by you. All rules must be followed strictly unless explicitly overridden by the system operator.
 
 ---
 

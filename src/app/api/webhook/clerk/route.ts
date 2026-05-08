@@ -27,8 +27,7 @@ export async function POST(req: Request) {
   }
 
   // Get body
-  const payload = await req.json();
-  const body = JSON.stringify(payload);
+  const body = await req.text();
 
   let evt: WebhookEvent;
 
@@ -47,23 +46,36 @@ export async function POST(req: Request) {
   }
 
   // Do something with payload
-  // For this guide, log payload to console
-  const { id } = evt.data;
   const eventType = evt.type;
-  console.log(`Received webhook with ID ${id} and event type of ${eventType}`);
+  console.log(`Received webhook with event type of ${eventType}`);
 
-  if (eventType === 'user.created' || eventType === 'user.updated') {
+  if (eventType === 'user.created') {
+    const { id, email_addresses, first_name } = evt.data;
+    const email = email_addresses[0]?.email_address;
+
+    if (id && email) {
+      const dbUser = await prisma.user.create({
+        data: {
+          clerkId: id,
+          email,
+        },
+      });
+
+      await prisma.workspace.create({
+        data: {
+          name: `${first_name || 'My'} Workspace`,
+          userId: dbUser.id,
+        },
+      });
+    }
+  } else if (eventType === 'user.updated') {
     const { id, email_addresses } = evt.data;
     const email = email_addresses[0]?.email_address;
 
     if (id && email) {
-      await prisma.user.upsert({
+      await prisma.user.update({
         where: { clerkId: id },
-        update: { email },
-        create: {
-          clerkId: id,
-          email,
-        },
+        data: { email },
       });
     }
   } else if (eventType === 'user.deleted') {

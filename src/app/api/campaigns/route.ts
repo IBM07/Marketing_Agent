@@ -1,45 +1,32 @@
 import { NextResponse } from "next/server";
-import { auth, currentUser } from "@clerk/nextjs/server";
+import { auth } from "@clerk/nextjs/server";
+import { z } from "zod";
 import prisma from "@/lib/prisma";
 
-// Helper function to get or create User and their default workspace
-async function getOrCreateUserAndWorkspace() {
-  const { userId } = await auth();
-  const user = await currentUser();
-
-  if (!userId || !user) {
-    throw new Error("Unauthorized");
-  }
-
-  const primaryEmail = user.emailAddresses[0]?.emailAddress;
-
-  // Upsert user
-  const dbUser = await prisma.user.upsert({
-    where: { clerkId: userId },
-    update: { email: primaryEmail },
-    create: { clerkId: userId, email: primaryEmail },
-  });
-
-  // Check if they have a workspace
-  let workspace = await prisma.workspace.findFirst({
-    where: { userId: dbUser.id },
-  });
-
-  if (!workspace) {
-    workspace = await prisma.workspace.create({
-      data: {
-        name: `${user.firstName || 'My'} Workspace`,
-        userId: dbUser.id,
-      },
-    });
-  }
-
-  return { user: dbUser, workspace };
-}
+const CampaignSchema = z.object({
+  name: z.string().min(1, "Name is required"),
+  goal: z.string().optional(),
+  targetAudience: z.string().optional(),
+});
 
 export async function GET() {
   try {
-    const { workspace } = await getOrCreateUserAndWorkspace();
+    const { userId } = await auth();
+
+    if (!userId) {
+      return new NextResponse("Unauthorized", { status: 401 });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { clerkId: userId },
+      include: { workspaces: true },
+    });
+
+    if (!user || user.workspaces.length === 0) {
+      return new NextResponse("Not Found: User or Workspace does not exist", { status: 404 });
+    }
+
+    const workspace = user.workspaces[0];
 
     const campaigns = await prisma.campaign.findMany({
       where: { workspaceId: workspace.id },
@@ -49,22 +36,40 @@ export async function GET() {
     return NextResponse.json(campaigns);
   } catch (error: unknown) {
     console.error("[CAMPAIGNS_GET]", error);
-    if (error instanceof Error && error.message === "Unauthorized") {
-      return new NextResponse("Unauthorized", { status: 401 });
-    }
     return new NextResponse("Internal Error", { status: 500 });
   }
 }
 
 export async function POST(req: Request) {
   try {
-    const { workspace } = await getOrCreateUserAndWorkspace();
-    const body = await req.json();
-    const { name, goal, targetAudience } = body;
+    const { userId } = await auth();
 
-    if (!name) {
-      return new NextResponse("Name is required", { status: 400 });
+    if (!userId) {
+      return new NextResponse("Unauthorized", { status: 401 });
     }
+
+    const user = await prisma.user.findUnique({
+      where: { clerkId: userId },
+      include: { workspaces: true },
+    });
+
+    if (!user || user.workspaces.length === 0) {
+      return new NextResponse("Not Found: User or Workspace does not exist", { status: 404 });
+    }
+
+    const workspace = user.workspaces[0];
+
+    const body = await req.json();
+    const validation = CampaignSchema.safeParse(body);
+
+    if (!validation.success) {
+      return NextResponse.json(
+        { error: "Validation failed", details: validation.error.format() },
+        { status: 400 }
+      );
+    }
+
+    const { name, goal, targetAudience } = validation.data;
 
     const campaign = await prisma.campaign.create({
       data: {
@@ -78,9 +83,6 @@ export async function POST(req: Request) {
     return NextResponse.json(campaign);
   } catch (error: unknown) {
     console.error("[CAMPAIGNS_POST]", error);
-    if (error instanceof Error && error.message === "Unauthorized") {
-      return new NextResponse("Unauthorized", { status: 401 });
-    }
     return new NextResponse("Internal Error", { status: 500 });
   }
 }
