@@ -4,7 +4,12 @@ import { PrismaPg } from '@prisma/adapter-pg';
 
 const prismaClientSingleton = () => {
   const connectionString = `${process.env.DATABASE_URL}`;
-  const pool = new Pool({ connectionString });
+  const pool = new Pool({
+    connectionString,
+    max: 5,
+    connectionTimeoutMillis: 10000,
+    idleTimeoutMillis: 30000
+  });
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const adapter = new PrismaPg(pool as any);
   return new PrismaClient({ adapter });

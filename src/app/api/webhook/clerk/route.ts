@@ -1,7 +1,8 @@
-import { Webhook } from 'svix';
-import { headers } from 'next/headers';
-import { WebhookEvent } from '@clerk/nextjs/server';
-import prisma from '@/lib/prisma';
+import { Webhook } from 'svix'
+import { headers } from 'next/headers'
+import { WebhookEvent } from '@clerk/nextjs/server'
+import prisma from '@/lib/prisma'
+import { logger } from '@/lib/logger'
 
 export async function POST(req: Request) {
   const SIGNING_SECRET = process.env.CLERK_WEBHOOK_SECRET;
@@ -39,7 +40,7 @@ export async function POST(req: Request) {
       'svix-signature': svix_signature,
     }) as WebhookEvent;
   } catch (err) {
-    console.error('Error: Could not verify webhook:', err);
+    logger.error('Error: Could not verify webhook', err);
     return new Response('Error: Verification error', {
       status: 400,
     });
@@ -87,7 +88,7 @@ export async function POST(req: Request) {
           where: { clerkId: id },
         });
       } catch (error) {
-        console.error('Error deleting user:', error);
+        logger.error('Error deleting user:', error);
       }
     }
   }

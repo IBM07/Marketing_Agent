@@ -1,0 +1,8 @@
+{
+  "buildCommand": "prisma generate && next build",
+  "framework": "nextjs",
+  "regions": ["iad1"],
+  "env": {
+    "NODE_ENV": "production"
+  }
+}
