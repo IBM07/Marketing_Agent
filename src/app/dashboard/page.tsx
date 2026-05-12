@@ -17,7 +17,8 @@ export default function DashboardOverview() {
   useEffect(() => {
     fetch('/api/campaigns')
       .then(res => res.json())
-      .then(data => {
+      .then(result => {
+         const data = result.data || result; // handle both old and new API response formats
          if (Array.isArray(data)) {
            setRecentCampaigns(data);
            // Calculate real active campaigns count
@@ -82,7 +83,7 @@ export default function DashboardOverview() {
         
         <div className="divide-y divide-card-border/50">
           {loading ? (
-            <div className="p-12 flex justify-center text-primary">
+            <div className="p-12 flex justify-center text-primary" role="status">
                <Loader2 className="w-6 h-6 animate-spin" />
             </div>
           ) : recentCampaigns.length === 0 ? (

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, Sparkles, Target, Rocket, Loader2, CheckCircle2, Users, Bot, Send, Upload } from "lucide-react";
 import Link from "next/link";
@@ -25,13 +25,40 @@ export default function NewCampaign() {
   const [recipientsList, setRecipientsList] = useState<string[]>([]);
   const [fileName, setFileName] = useState("");
 
+  // Add robust keyboard navigation
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isTextarea = e.target instanceof HTMLTextAreaElement;
+      const isEnter = e.key === 'Enter';
+      const hasModifier = e.ctrlKey || e.metaKey;
+
+      if (isEnter) {
+        // Require Ctrl+Enter or Cmd+Enter to proceed globally in this wizard
+        if (!hasModifier) return;
+        
+        e.preventDefault();
+        if (step < 3) {
+          setStep((s) => s + 1);
+        } else if (step === 3 && !isGenerating) {
+          handleGenerate();
+        } else if (step === 4 && !isSaving) {
+          handleActivate();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, isGenerating, isSaving, formData, generatedSubject, generatedCopy, recipientsList]);
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    
+
     setFileName(file.name);
     const reader = new FileReader();
-    
+
     reader.onload = async (evt) => {
       try {
         const XLSX = await import("xlsx");
@@ -40,10 +67,10 @@ export default function NewCampaign() {
         const wsname = wb.SheetNames[0];
         const ws = wb.Sheets[wsname];
         const data = XLSX.utils.sheet_to_json(ws);
-        
+
         const emails = new Set<string>();
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        
+
         data.forEach((row: unknown) => {
           if (row && typeof row === 'object') {
             Object.values(row).forEach((val: unknown) => {
@@ -53,14 +80,14 @@ export default function NewCampaign() {
             });
           }
         });
-        
+
         setRecipientsList(Array.from(emails));
       } catch (err) {
         console.error("Error parsing file:", err);
         alert("Failed to parse file. Please ensure it's a valid CSV or Excel file.");
       }
     };
-    
+
     reader.readAsBinaryString(file);
   };
 
@@ -84,7 +111,7 @@ export default function NewCampaign() {
       }
     } catch (e) {
       console.error(e);
-      alert("Error generating copy. Ensure Ollama is running.");
+      alert("Generation failed. Please try again.");
     } finally {
       setIsGenerating(false);
     }
@@ -146,19 +173,19 @@ export default function NewCampaign() {
       <div className="bg-card/10 border border-card-border/50 backdrop-blur-xl rounded-2xl overflow-hidden relative">
         {/* Progress Bar */}
         <div className="absolute top-0 left-0 right-0 h-1 bg-card-border/50">
-           <motion.div 
-             className="h-full bg-gradient-to-r from-primary to-secondary"
-             initial={{ width: "25%" }}
-             animate={{ width: `${progressPercentage}%` }}
-             transition={{ duration: 0.5, ease: "easeInOut" }}
-           />
+          <motion.div
+            className="h-full bg-gradient-to-r from-primary to-secondary"
+            initial={{ width: "25%" }}
+            animate={{ width: `${progressPercentage}%` }}
+            transition={{ duration: 0.5, ease: "easeInOut" }}
+          />
         </div>
 
         <div className="p-8 md:p-12">
-          
+
           <AnimatePresence mode="wait">
             {isSuccess ? (
-              <motion.div 
+              <motion.div
                 key="success"
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
@@ -171,7 +198,7 @@ export default function NewCampaign() {
                 <p className="text-muted-foreground max-w-md">Your autonomous marketing swarm has been initialized and is active.</p>
               </motion.div>
             ) : isGenerating ? (
-              <motion.div 
+              <motion.div
                 key="generating"
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
@@ -179,21 +206,20 @@ export default function NewCampaign() {
                 className="flex flex-col items-center justify-center py-24 text-center"
               >
                 <div className="relative w-24 h-24 flex items-center justify-center mb-8">
-                   <div className="absolute inset-0 border-t-2 border-primary rounded-full animate-spin"></div>
-                   <div className="absolute inset-2 border-r-2 border-secondary rounded-full animate-spin [animation-duration:1.5s] [animation-direction:reverse]"></div>
-                   <Bot className="w-8 h-8 text-white relative z-10 animate-pulse" />
+                  <div className="absolute inset-0 border-t-2 border-primary rounded-full animate-spin"></div>
+                  <div className="absolute inset-2 border-r-2 border-secondary rounded-full animate-spin [animation-duration:1.5s] [animation-direction:reverse]"></div>
+                  <Bot className="w-8 h-8 text-white relative z-10 animate-pulse" />
                 </div>
                 <h2 className="text-2xl font-bold mb-2 flex items-center justify-center gap-2 w-full text-center">
                   <Loader2 className="w-5 h-5 animate-spin text-primary" />
                   Synthesizing Market Data...
                 </h2>
                 <p className="text-muted-foreground font-mono text-sm max-w-sm mt-4 text-center">
-                  Connecting to local Ollama instance... <br />
-                  Generating hyper-personalized email sequences...
+                  Generating highly personalized email...
                 </p>
               </motion.div>
             ) : (
-              <motion.div 
+              <motion.div
                 key={`step-${step}`}
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
@@ -214,21 +240,23 @@ export default function NewCampaign() {
 
                     <div className="space-y-4">
                       <div>
-                        <label className="block text-sm font-medium mb-2">Campaign Name</label>
-                        <input 
-                          type="text" 
+                        <label htmlFor="campaignName" className="block text-sm font-medium mb-2">Campaign Name</label>
+                        <input
+                          id="campaignName"
+                          type="text"
                           value={formData.name}
-                          onChange={(e) => setFormData({...formData, name: e.target.value})}
-                          placeholder="e.g. Q3 Founders Outreach" 
+                          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                          placeholder="e.g. Q3 Founders Outreach"
                           className="w-full bg-background/50 border border-card-border rounded-md px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all font-mono text-sm"
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium mb-2">Primary Goal</label>
+                        <label htmlFor="primaryGoal" className="block text-sm font-medium mb-2">Primary Goal</label>
                         <div className="relative">
-                          <select 
+                          <select
+                            id="primaryGoal"
                             value={formData.goal}
-                            onChange={(e) => setFormData({...formData, goal: e.target.value})}
+                            onChange={(e) => setFormData({ ...formData, goal: e.target.value })}
                             className="w-full bg-background/50 border border-card-border rounded-md px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all text-sm appearance-none"
                           >
                             <option>Lead Generation</option>
@@ -256,12 +284,13 @@ export default function NewCampaign() {
 
                     <div className="space-y-4">
                       <div>
-                        <label className="block text-sm font-medium mb-2">Niche / ICP Description</label>
-                        <textarea 
+                        <label htmlFor="niche" className="block text-sm font-medium mb-2">Niche / ICP Description</label>
+                        <textarea
+                          id="niche"
                           rows={4}
                           value={formData.niche}
-                          onChange={(e) => setFormData({...formData, niche: e.target.value})}
-                          placeholder="e.g. SaaS founders doing $10k-$50k MRR looking to scale organic acquisition..." 
+                          onChange={(e) => setFormData({ ...formData, niche: e.target.value })}
+                          placeholder="e.g. SaaS founders doing $10k-$50k MRR looking to scale organic acquisition..."
                           className="w-full bg-background/50 border border-card-border rounded-md px-4 py-3 focus:outline-none focus:ring-2 focus:ring-secondary/50 transition-all text-sm font-mono resize-none"
                         ></textarea>
                       </div>
@@ -283,12 +312,13 @@ export default function NewCampaign() {
 
                     <div className="space-y-4">
                       <div>
-                        <label className="block text-sm font-medium mb-2">Core Product / Offer</label>
-                        <textarea 
+                        <label htmlFor="valueProp" className="block text-sm font-medium mb-2">Core Product / Offer</label>
+                        <textarea
+                          id="valueProp"
                           rows={4}
                           value={formData.valueProp}
-                          onChange={(e) => setFormData({...formData, valueProp: e.target.value})}
-                          placeholder="e.g. AI Marketing agent that automates outreach, reducing CAC by 40% while 10x'ing touchpoints..." 
+                          onChange={(e) => setFormData({ ...formData, valueProp: e.target.value })}
+                          placeholder="e.g. AI Marketing agent that automates outreach, reducing CAC by 40% while 10x'ing touchpoints..."
                           className="w-full bg-background/50 border border-card-border rounded-md px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all text-sm font-mono resize-none"
                         ></textarea>
                       </div>
@@ -310,15 +340,17 @@ export default function NewCampaign() {
 
                     <div className="space-y-4">
                       <div>
-                        <label className="block text-sm font-medium mb-2">Generated Subject</label>
-                        <input 
-                          type="text" 
+                        <label htmlFor="generatedSubject" className="block text-sm font-medium mb-2">Generated Subject</label>
+                        <input
+                          id="generatedSubject"
+                          type="text"
                           value={generatedSubject}
                           onChange={(e) => setGeneratedSubject(e.target.value)}
                           className="w-full bg-background/50 border border-card-border rounded-md px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all text-sm font-mono mb-4"
                         />
-                        <label className="block text-sm font-medium mb-2">Generated Outreach Body</label>
-                        <textarea 
+                        <label htmlFor="generatedCopy" className="block text-sm font-medium mb-2">Generated Outreach Body</label>
+                        <textarea
+                          id="generatedCopy"
                           rows={6}
                           value={generatedCopy}
                           onChange={(e) => setGeneratedCopy(e.target.value)}
@@ -335,8 +367,8 @@ export default function NewCampaign() {
                                 {fileName ? fileName : "Click to upload .csv, .xlsx, or .xls files"}
                               </p>
                             </div>
-                            <input 
-                              type="file" 
+                            <input
+                              type="file"
                               accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel"
                               onChange={handleFileUpload}
                               className="hidden"
@@ -355,38 +387,41 @@ export default function NewCampaign() {
 
                 {/* Navigation Buttons */}
                 <div className="mt-10 pt-6 border-t border-card-border/50 flex justify-between items-center">
-                  <button 
+                  <button
                     onClick={() => setStep(Math.max(1, step - 1))}
                     disabled={step === 1 || isSaving}
                     className={`px-6 py-2 rounded-md font-medium transition-all ${step === 1 ? 'opacity-0 pointer-events-none' : 'text-muted-foreground hover:text-foreground hover:bg-card/50 disabled:opacity-50'}`}
                   >
                     Previous
                   </button>
-                  
+
                   {step < 3 ? (
-                    <button 
+                    <button
                       onClick={() => setStep(step + 1)}
-                      className="bg-foreground text-background hover:bg-white/90 px-6 py-2 rounded-md font-medium transition-all"
+                      className="bg-foreground text-background hover:bg-white/90 px-6 py-2 rounded-md font-medium transition-all flex items-center gap-3"
                     >
                       Continue
+                      <span className="text-[10px] uppercase font-mono tracking-widest opacity-60 flex items-center gap-1"><kbd className="bg-background/10 px-1.5 py-0.5 rounded">Ctrl</kbd>+<kbd className="bg-background/10 px-1.5 py-0.5 rounded">Enter</kbd></span>
                     </button>
                   ) : step === 3 ? (
-                    <button 
+                    <button
                       onClick={handleGenerate}
-                      className="bg-primary hover:bg-primary-hover text-primary-foreground px-8 py-2 rounded-md font-medium flex items-center gap-2 transition-all shadow-[0_0_20px_-5px_var(--tw-shadow-color)] shadow-primary/40 relative overflow-hidden group"
+                      className="bg-primary hover:bg-primary-hover text-primary-foreground px-8 py-2 rounded-md font-medium flex items-center gap-3 transition-all shadow-[0_0_20px_-5px_var(--tw-shadow-color)] shadow-primary/40 relative overflow-hidden group"
                     >
                       <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:animate-[shimmer_1.5s_infinite]"></div>
                       <Rocket className="w-4 h-4 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 transition-transform" />
                       Generate Strategy
+                      <span className="text-[10px] uppercase font-mono tracking-widest opacity-80 flex items-center gap-1 border-l border-primary-foreground/30 pl-3 ml-1"><kbd>Ctrl</kbd>+<kbd>Enter</kbd></span>
                     </button>
                   ) : (
-                    <button 
+                    <button
                       onClick={handleActivate}
                       disabled={isSaving}
-                      className="bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white px-8 py-2 rounded-md font-medium flex items-center gap-2 transition-all shadow-lg shadow-green-600/30 relative overflow-hidden group"
+                      className="bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white px-8 py-2 rounded-md font-medium flex items-center gap-3 transition-all shadow-lg shadow-green-600/30 relative overflow-hidden group"
                     >
                       {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 transition-transform" />}
                       {isSaving ? "Activating..." : "Save & Deploy Swarm"}
+                      {!isSaving && <span className="text-[10px] uppercase font-mono tracking-widest opacity-80 flex items-center gap-1 border-l border-white/30 pl-3 ml-1"><kbd>Ctrl</kbd>+<kbd>Enter</kbd></span>}
                     </button>
                   )}
                 </div>

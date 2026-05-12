@@ -6,12 +6,26 @@ datasource db {
   provider = "postgresql"
 }
 
+enum CampaignStatus {
+  DRAFT
+  ACTIVE
+  COMPLETED
+  PAUSED
+}
+
+enum EmailStatus {
+  PENDING
+  SENT
+  FAILED
+  BOUNCED
+}
+
 model User {
-  id        String      @id @default(uuid())
-  clerkId   String      @unique
-  email     String      @unique
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
+  id         String      @id @default(uuid())
+  clerkId    String      @unique
+  email      String      @unique
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
   workspaces Workspace[]
 }
 
@@ -27,26 +41,32 @@ model Workspace {
 }
 
 model Campaign {
-  id          String      @id @default(uuid())
-  name        String
-  goal        String?
+  id             String         @id @default(uuid())
+  name           String
+  goal           String?
   targetAudience String?
-  status      String      @default("DRAFT") // DRAFT, ACTIVE, COMPLETED
-  workspaceId String
-  workspace   Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  emailLogs   EmailLog[]
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  status         CampaignStatus @default(DRAFT)
+  workspaceId    String
+  workspace      Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  emailLogs      EmailLog[]
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  deletedAt      DateTime?
+
+  @@index([workspaceId, createdAt(sort: Desc)])
 }
 
 model EmailLog {
-  id         String   @id @default(uuid())
+  id         String      @id @default(uuid())
   campaignId String
-  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaign   Campaign    @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   recipient  String
   subject    String
   content    String
-  status     String   @default("PENDING") // PENDING, SENT, FAILED
+  status     EmailStatus @default(PENDING)
   sentAt     DateTime?
-  createdAt  DateTime @default(now())
+  createdAt  DateTime    @default(now())
+
+  @@index([campaignId, status])
+  @@index([campaignId, createdAt(sort: Desc)])
 }

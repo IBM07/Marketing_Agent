@@ -64,3 +64,14 @@ pnpm-debug.log*
 # Test data / Local data
 *.csv
 /test csv/
+
+# Bundle analyzer reports
+analyze/
+.next/analyze/
+
+# Playwright & Testing artifacts
+playwright-report/
+test-results/
+
+# Local checks
+check_problems/

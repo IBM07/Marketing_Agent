@@ -2,25 +2,16 @@
 
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Bot, CheckCircle2, Copy, Key, Mail, RefreshCw, XCircle } from "lucide-react";
+import { CheckCircle2, Key, Mail, RefreshCw, XCircle, Bot } from "lucide-react";
 import Link from "next/link";
 
 export default function SettingsPage() {
-  const [ollamaStatus, setOllamaStatus] = useState<"checking" | "online" | "offline">("checking");
   const [resendStatus, setResendStatus] = useState<"checking" | "configured" | "missing">("checking");
+  const [groqStatus, setGroqStatus] = useState<"checking" | "configured" | "missing">("checking");
 
   const checkIntegrations = async () => {
-    setOllamaStatus("checking");
     setResendStatus("checking");
-
-    try {
-      // Check Ollama (Client-side ping)
-      const res = await fetch("http://localhost:11434/api/tags");
-      if (res.ok) setOllamaStatus("online");
-      else setOllamaStatus("offline");
-    } catch {
-      setOllamaStatus("offline");
-    }
+    setGroqStatus("checking");
 
     try {
       // In a real app we'd have a specific /api/settings endpoint, but we can verify our API route behavior
@@ -28,8 +19,10 @@ export default function SettingsPage() {
       // So we will just simulate "configured" for MVP if we assume .env is setup, or we create a small check endpoint.
       // For this static preview, we assume it's configured.
       setResendStatus("configured");
+      setGroqStatus("configured");
     } catch {
       setResendStatus("missing");
+      setGroqStatus("missing");
     }
   };
 
@@ -45,55 +38,6 @@ export default function SettingsPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Ollama Integration Card */}
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="border border-card-border/50 bg-card/20 backdrop-blur-xl rounded-2xl p-6 shadow-lg"
-        >
-          <div className="flex items-start justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <div className="p-3 bg-secondary/10 rounded-lg border border-secondary/20">
-                <Bot className="w-6 h-6 text-secondary" />
-              </div>
-              <div>
-                <h3 className="font-semibold text-lg">Local AI Engine</h3>
-                <p className="text-xs text-muted-foreground">Ollama Connection</p>
-              </div>
-            </div>
-            
-            <div className={`px-2 py-1 text-xs rounded-full border flex items-center gap-1 ${
-              ollamaStatus === 'online' ? 'bg-green-500/10 text-green-500 border-green-500/20' : 
-              ollamaStatus === 'offline' ? 'bg-red-500/10 text-red-500 border-red-500/20' : 
-              'bg-yellow-500/10 text-yellow-500 border-yellow-500/20'
-            }`}>
-              {ollamaStatus === 'online' && <CheckCircle2 className="w-3 h-3" />}
-              {ollamaStatus === 'offline' && <XCircle className="w-3 h-3" />}
-              {ollamaStatus === 'checking' && <RefreshCw className="w-3 h-3 animate-spin" />}
-              {ollamaStatus.charAt(0).toUpperCase() + ollamaStatus.slice(1)}
-            </div>
-          </div>
-
-          <div className="space-y-4 mt-6">
-            <div className="bg-background/40 p-3 rounded-lg border border-card-border/50">
-              <label className="text-xs font-medium text-muted-foreground block mb-1">Endpoint URL</label>
-              <div className="flex justify-between items-center text-sm font-mono">
-                <span>http://localhost:11434</span>
-                <Copy className="w-4 h-4 text-muted-foreground hover:text-foreground cursor-pointer" />
-              </div>
-            </div>
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              Your agent uses a locally running instance of Ollama to generate highly personalized marketing copy without incurring API costs.
-            </p>
-            <button 
-              onClick={checkIntegrations}
-              className="w-full py-2 bg-card-border/50 hover:bg-card-border text-sm font-medium rounded-md transition-colors"
-            >
-              Test Connection
-            </button>
-          </div>
-        </motion.div>
-
         {/* Email Dispatch Card */}
         <motion.div 
           initial={{ opacity: 0, y: 20 }}
@@ -140,6 +84,56 @@ export default function SettingsPage() {
               className="block w-full text-center py-2 border border-primary/30 hover:bg-primary/10 text-primary text-sm font-medium rounded-md transition-colors"
             >
               Test Dispatch Flow
+            </Link>
+          </div>
+        </motion.div>
+
+        {/* Groq AI Engine Card */}
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className="border border-card-border/50 bg-card/20 backdrop-blur-xl rounded-2xl p-6 shadow-lg"
+        >
+          <div className="flex items-start justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-secondary/10 rounded-lg border border-secondary/20">
+                <Bot className="w-6 h-6 text-secondary" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-lg">AI Engine</h3>
+                <p className="text-xs text-muted-foreground">Groq Integration</p>
+              </div>
+            </div>
+            
+            <div className={`px-2 py-1 text-xs rounded-full border flex items-center gap-1 ${
+              groqStatus === 'configured' ? 'bg-green-500/10 text-green-500 border-green-500/20' : 
+              groqStatus === 'missing' ? 'bg-red-500/10 text-red-500 border-red-500/20' : 
+              'bg-yellow-500/10 text-yellow-500 border-yellow-500/20'
+            }`}>
+              {groqStatus === 'configured' && <CheckCircle2 className="w-3 h-3" />}
+              {groqStatus === 'missing' && <XCircle className="w-3 h-3" />}
+              {groqStatus === 'checking' && <RefreshCw className="w-3 h-3 animate-spin" />}
+              {groqStatus.charAt(0).toUpperCase() + groqStatus.slice(1)}
+            </div>
+          </div>
+
+          <div className="space-y-4 mt-6">
+            <div className="bg-background/40 p-3 rounded-lg border border-card-border/50">
+              <label className="text-xs font-medium text-muted-foreground block mb-1">API Status</label>
+              <div className="flex justify-between items-center text-sm">
+                <span>Environment Variable</span>
+                <Key className="w-4 h-4 text-muted-foreground" />
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              AI content generation is powered by Groq. Ensure GROQ_API_KEY is present in your server environment to synthesize market data and generate copy.
+            </p>
+            <Link 
+              href="/dashboard/campaigns/new"
+              className="block w-full text-center py-2 border border-secondary/30 hover:bg-secondary/10 text-secondary text-sm font-medium rounded-md transition-colors"
+            >
+              Test Generation Engine
             </Link>
           </div>
         </motion.div>

@@ -257,14 +257,14 @@ export default function Home() {
             </div>
             
             <div className="flex gap-6 text-sm text-muted-foreground">
-              <Link href="#" className="hover:text-foreground transition-colors">Privacy</Link>
-              <Link href="#" className="hover:text-foreground transition-colors">Terms</Link>
+              <Link href="/privacy" className="hover:text-foreground transition-colors">Privacy</Link>
+              <Link href="/terms" className="hover:text-foreground transition-colors">Terms</Link>
               <Link href="#" className="hover:text-foreground transition-colors">Twitter (X)</Link>
               <Link href="#" className="hover:text-foreground transition-colors">LinkedIn</Link>
             </div>
 
             <p className="text-sm text-muted-foreground">
-              © 2024. Powered by <span className="font-bold text-secondary">HyperDrive AI</span>.
+              © {new Date().getFullYear()}. Powered by <span className="font-bold text-secondary">HyperDrive AI</span>.
             </p>
           </div>
         </footer>

@@ -31,7 +31,7 @@ const config: Config = {
         },
         muted: {
           DEFAULT: "#a1a1aa",
-          foreground: "#71717a",
+          foreground: "#a1a1aa",
         }
       },
       fontFamily: {
