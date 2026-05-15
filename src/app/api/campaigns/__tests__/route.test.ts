@@ -36,7 +36,7 @@ describe('Campaigns API', () => {
 
       const request = new Request('http://localhost/api/campaigns');
       const response = await GET(request);
-      const data = await response.json();
+      const _data = await response.json();
 
       expect(response.status).toBe(200);
       expect(prismaMock.campaign.findMany).toHaveBeenCalledWith(

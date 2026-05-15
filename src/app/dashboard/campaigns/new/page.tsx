@@ -28,7 +28,6 @@ export default function NewCampaign() {
   // Add robust keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      const isTextarea = e.target instanceof HTMLTextAreaElement;
       const isEnter = e.key === 'Enter';
       const hasModifier = e.ctrlKey || e.metaKey;
 

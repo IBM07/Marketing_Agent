@@ -25,7 +25,7 @@ export default function TermsPage() {
 
           <h2 className="text-2xl font-semibold text-foreground mt-8 mb-4">2. Description of Service</h2>
           <p className="mb-4">
-            HyperDrive AI provides an artificial intelligence-powered marketing infrastructure platform, including content generation, campaign management, and analytics features. You understand and agree that the service is provided "AS-IS".
+            HyperDrive AI provides an artificial intelligence-powered marketing infrastructure platform, including content generation, campaign management, and analytics features. You understand and agree that the service is provided &quot;AS-IS&quot;.
           </p>
 
           <h2 className="text-2xl font-semibold text-foreground mt-8 mb-4">3. User Accounts</h2>
