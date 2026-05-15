@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { auth, currentUser } from "@clerk/nextjs/server";
 import { z } from "zod";
 import prisma from "@/lib/prisma";
 import { Resend } from "resend";
@@ -64,6 +64,32 @@ async function sendEmailWithRetry(recipient: string, subject: string, content: s
   return { success: false, error: "Max retries exceeded" };
 }
 
+async function getOrCreateUser(userId: string) {
+  let user = await prisma.user.findUnique({
+    where: { clerkId: userId },
+  });
+
+  if (!user) {
+    const clerkUser = await currentUser();
+    if (!clerkUser) throw new UnauthorizedError();
+    const email = clerkUser.emailAddresses[0]?.emailAddress || `${userId}@placeholder.com`;
+    
+    user = await prisma.user.create({
+      data: {
+        clerkId: userId,
+        email,
+        workspaces: {
+          create: {
+            name: `${clerkUser.firstName || 'My'} Workspace`,
+          }
+        }
+      }
+    });
+  }
+
+  return user;
+}
+
 export const POST = apiHandler(async (req: Request) => {
   const { userId } = await auth();
   if (!userId) {
@@ -84,13 +110,7 @@ export const POST = apiHandler(async (req: Request) => {
 
   const { campaignId, recipients, subject, content } = validation.data;
 
-  const dbUser = await prisma.user.findUnique({
-    where: { clerkId: userId },
-  });
-
-  if (!dbUser) {
-    throw new NotFoundError("User not found in database");
-  }
+  const dbUser = await getOrCreateUser(userId);
 
   const campaign = await prisma.campaign.findUnique({
     where: { id: campaignId },
