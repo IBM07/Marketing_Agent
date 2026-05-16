@@ -130,20 +130,20 @@ export default function Home() {
                 <div className="w-3 h-3 rounded-full bg-red-500"></div>
                 <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
                 <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                <span className="text-muted-foreground ml-2">hyper-drive-core.exe</span>
+                <span className="text-muted-foreground ml-2">hyper-drive-engine.exe</span>
               </div>
-              <div className="text-secondary flex gap-2"><span>&gt;</span> <span className="animate-pulse">initializing_marketing_swarm...|</span></div>
-              <div className="text-primary mt-2 flex gap-2"><span>&gt;</span> <span>Optimizing local LLM context: 128k tokens</span></div>
-              <div className="text-muted-foreground mt-2 flex gap-2"><span>&gt;</span> <span>Targeting 5,000 ICP leads via LinkedIn API...</span></div>
-              <div className="text-green-500 mt-2 flex gap-2"><span>&gt;</span> <span>Conversion rate uplift: +24%</span></div>
+              <div className="text-secondary flex gap-2"><span>&gt;</span> <span className="animate-pulse">connecting_to_resend_relay...|</span></div>
+              <div className="text-primary mt-2 flex gap-2"><span>&gt;</span> <span>Deploying automated sequence...</span></div>
+              <div className="text-muted-foreground mt-2 flex gap-2"><span>&gt;</span> <span>Webhook: email.delivered [id: 7f3a...9e1c]</span></div>
+              <div className="text-green-500 mt-2 flex gap-2"><span>&gt;</span> <span>Campaign status: 100% delivered</span></div>
             </div>
 
             <div className="relative z-10 mt-auto">
               <h3 className="text-2xl font-bold mb-2 flex items-center gap-3">
-                <Terminal className="text-primary w-6 h-6" /> Local AI Power
+                <Terminal className="text-primary w-6 h-6" /> Automated Campaigns
               </h3>
               <p className="text-muted-foreground">
-                Run proprietary models locally or in the cloud. Zero data leakage, maximum inference speed.
+                Deploy intelligent email sequences that reach your audience exactly when it matters. No manual intervention required.
               </p>
             </div>
           </motion.div>
@@ -172,10 +172,10 @@ export default function Home() {
 
              <div className="relative z-10 mt-auto">
               <h3 className="text-2xl font-bold mb-2 flex items-center gap-3">
-                <BarChart3 className="text-secondary w-6 h-6" /> Omnichannel
+                <BarChart3 className="text-secondary w-6 h-6" /> Real-time Analytics
               </h3>
               <p className="text-muted-foreground">
-                Synchronize social, email, and ad spends through a single neural brain.
+                Track every delivery, open, and click as they happen. Stay informed with precise campaign metrics.
               </p>
             </div>
           </motion.div>
@@ -201,10 +201,10 @@ export default function Home() {
 
              <div className="relative z-10 mt-auto">
               <h3 className="text-2xl font-bold mb-2 flex items-center gap-3">
-                <Target className="text-secondary w-6 h-6" /> Hyper-Personalization
+                <Target className="text-secondary w-6 h-6" /> Smart Workspaces
               </h3>
               <p className="text-muted-foreground">
-                Target segments of one. Mapping 400+ data points per user to generate bespoke experiences.
+                Organize your campaigns into dedicated workspaces. Scale your marketing team with perfect isolation.
               </p>
             </div>
           </motion.div>
@@ -234,10 +234,10 @@ export default function Home() {
 
              <div className="relative z-10 mt-auto">
               <h3 className="text-2xl font-bold mb-2 flex items-center gap-3">
-                <BarChart3 className="text-primary w-6 h-6" /> Predictive ROI
+                <BarChart3 className="text-primary w-6 h-6" /> Secure & Reliable
               </h3>
               <p className="text-muted-foreground">
-                Know your CAC before you spend a cent. Our model forecasts revenue trajectories with 94% accuracy.
+                Built on enterprise-grade infrastructure with secure authentication and production-ready reliability.
               </p>
             </div>
           </motion.div>

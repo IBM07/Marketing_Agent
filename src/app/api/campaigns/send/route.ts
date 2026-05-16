@@ -135,6 +135,7 @@ export const POST = apiHandler(async (req: Request) => {
           subject,
           content,
           status,
+          resendId: result.success ? result.messageId : null,
           sentAt: status === "SENT" ? new Date() : null,
         },
       });

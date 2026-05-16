@@ -16,8 +16,12 @@ enum CampaignStatus {
 enum EmailStatus {
   PENDING
   SENT
+  DELIVERED
+  OPENED
+  CLICKED
   FAILED
   BOUNCED
+  COMPLAINED
 }
 
 model User {
@@ -64,6 +68,7 @@ model EmailLog {
   subject    String
   content    String
   status     EmailStatus @default(PENDING)
+  resendId   String?     @unique
   sentAt     DateTime?
   createdAt  DateTime    @default(now())
 
