@@ -2,36 +2,49 @@
 
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Plus, TrendingUp, Users, Activity, ExternalLink, Loader2 } from "lucide-react";
+import { Plus, TrendingUp, Users, Activity, ExternalLink, Loader2, Send, CheckCircle } from "lucide-react";
 import Link from "next/link";
 
 export default function DashboardOverview() {
   const [stats, setStats] = useState([
     { name: "Active Campaigns", value: "0", change: "+0", icon: Activity },
-    { name: "Total Leads Discovered", value: "0", change: "+0%", icon: Users },
-    { name: "Average Conversion", value: "0%", change: "+0%", icon: TrendingUp },
+    { name: "Total Emails Sent", value: "0", change: "+0", icon: Send },
+    { name: "Delivery Rate", value: "0%", change: "+0%", icon: CheckCircle },
   ]);
   const [recentCampaigns, setRecentCampaigns] = useState<{ id: string, name: string, status: string }[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch('/api/campaigns')
-      .then(res => res.json())
-      .then(result => {
-         const data = result.data || result; // handle both old and new API response formats
-         if (Array.isArray(data)) {
-           setRecentCampaigns(data);
-           // Calculate real active campaigns count
-           const activeCount = data.filter((c: { status: string }) => c.status === 'ACTIVE').length;
-           setStats(prev => [
-             { ...prev[0], value: activeCount.toString(), change: `+${activeCount}` },
-             { ...prev[1], value: "1,240", change: "+12%" }, // Mock for now
-             { ...prev[2], value: "4.2%", change: "+0.5%" }, // Mock for now
-           ]);
-         }
-      })
-      .catch(console.error)
-      .finally(() => setLoading(false));
+    const fetchData = async () => {
+      try {
+        const [campaignsRes, statsRes] = await Promise.all([
+          fetch('/api/campaigns'),
+          fetch('/api/stats')
+        ]);
+
+        const campaignsResult = await campaignsRes.json();
+        const statsResult = await statsRes.json();
+
+        const campaignsData = campaignsResult.data || campaignsResult;
+        if (Array.isArray(campaignsData)) {
+          setRecentCampaigns(campaignsData);
+        }
+
+        if (statsResult) {
+          setStats([
+            { name: "Active Campaigns", value: statsResult.activeCampaigns.toString(), change: `+${statsResult.activeCampaigns}`, icon: Activity },
+            { name: "Total Emails Sent", value: statsResult.totalSent.toLocaleString(), change: `+${statsResult.totalSent}`, icon: Send },
+            { name: "Delivery Rate", value: statsResult.deliveryRate, change: "+0%", icon: CheckCircle },
+          ]);
+        }
+      } catch (error) {
+        console.error("Error fetching dashboard data:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
   }, []);
 
   return (
@@ -103,8 +116,8 @@ export default function DashboardOverview() {
                 <h3 className="font-semibold text-lg group-hover:text-primary transition-colors">{campaign.name}</h3>
                 <div className="flex items-center gap-2 mt-2">
                   <span className={`text-xs px-2 py-1 rounded-full border ${
-                    campaign.status === 'Active' ? 'bg-green-500/10 text-green-500 border-green-500/20' : 
-                    campaign.status === 'Completed' ? 'bg-blue-500/10 text-blue-500 border-blue-500/20' : 
+                    campaign.status === 'ACTIVE' ? 'bg-green-500/10 text-green-500 border-green-500/20' : 
+                    campaign.status === 'COMPLETED' ? 'bg-blue-500/10 text-blue-500 border-blue-500/20' : 
                     'bg-yellow-500/10 text-yellow-500 border-yellow-500/20'
                   }`}>
                     {campaign.status}
