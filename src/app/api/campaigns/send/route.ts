@@ -148,11 +148,11 @@ export const POST = apiHandler(async (req: Request) => {
     (r) => r.status === "fulfilled" && r.value.status === "SENT"
   ).length;
 
-  // Update campaign status to ACTIVE if it's currently DRAFT and we had successful sends
-  if (campaign.status === "DRAFT" && successfulSends > 0) {
+  // Update campaign status to COMPLETED since the batch send was executed
+  if (successfulSends > 0) {
     await prisma.campaign.update({
       where: { id: campaignId },
-      data: { status: "ACTIVE" },
+      data: { status: "COMPLETED" },
     });
   }
 
