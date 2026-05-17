@@ -22,14 +22,14 @@ export async function POST(req: Request) {
     }
 
     const wh = new Webhook(webhookSecret);
-    let evt: any;
+    let evt: { type: string, data: { email_id: string } };
 
     try {
       evt = wh.verify(payload, {
         "svix-id": svix_id,
         "svix-timestamp": svix_timestamp,
         "svix-signature": svix_signature,
-      });
+      }) as { type: string, data: { email_id: string } };
     } catch (err) {
       console.error("Error verifying webhook:", err);
       return new NextResponse("Invalid signature", { status: 400 });
@@ -75,7 +75,7 @@ export async function POST(req: Request) {
           resendId: emailId,
         },
         data: {
-          status: statusToUpdate as any, // casting as any to bypass strict prisma types until generation
+          status: statusToUpdate as import('@prisma/client').EmailStatus, // casting as any to bypass strict prisma types until generation
         },
       });
       console.log(`Updated email log for Resend ID ${emailId} to status ${statusToUpdate}`);

@@ -7,14 +7,7 @@ import { rateLimiter } from "@/lib/rate-limit";
 import { apiHandler } from "@/lib/api-handler";
 import { UnauthorizedError, NotFoundError, RateLimitError, ValidationError } from "@/lib/errors";
 
-function escapeHtml(unsafe: string) {
-  return unsafe
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
+
 
 const SendEmailSchema = z.object({
   campaignId: z.string().uuid(),
@@ -42,7 +35,7 @@ async function sendEmailWithRetry(recipient: string, subject: string, content: s
           from: fromEmail,
           to: [recipient],
           subject: subject,
-          html: escapeHtml(content).replace(/\n/g, "<br>"),
+          html: content.replace(/\n/g, "<br>"), // Allow HTML but preserve line breaks
         });
 
         if (error) {

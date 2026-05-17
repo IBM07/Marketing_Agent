@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Plus, TrendingUp, Users, Activity, ExternalLink, Loader2, Send, CheckCircle } from "lucide-react";
+import { Plus, Activity, ExternalLink, Loader2, Send, CheckCircle } from "lucide-react";
 import Link from "next/link";
 
 export default function DashboardOverview() {
