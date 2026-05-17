@@ -4,7 +4,7 @@ import prisma from "@/lib/prisma";
 import { apiHandler } from "@/lib/api-handler";
 import { UnauthorizedError } from "@/lib/errors";
 
-export const GET = apiHandler(async (req: Request) => {
+export const GET = apiHandler(async (_req: Request) => {
   const { userId } = await auth();
 
   if (!userId) {

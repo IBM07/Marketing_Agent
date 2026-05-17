@@ -14,12 +14,14 @@ export default function SettingsPage() {
     setGroqStatus("checking");
 
     try {
-      // In a real app we'd have a specific /api/settings endpoint, but we can verify our API route behavior
-      // Wait, we can't easily check ENV vars from client side securely without an endpoint,
-      // So we will just simulate "configured" for MVP if we assume .env is setup, or we create a small check endpoint.
-      // For this static preview, we assume it's configured.
-      setResendStatus("configured");
-      setGroqStatus("configured");
+      const res = await fetch("/api/settings/check");
+      if (res.ok) {
+        const data = await res.json();
+        setResendStatus(data.resendConfigured ? "configured" : "missing");
+        setGroqStatus(data.groqConfigured ? "configured" : "missing");
+      } else {
+        throw new Error("Failed to fetch settings status");
+      }
     } catch {
       setResendStatus("missing");
       setGroqStatus("missing");
