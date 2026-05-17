@@ -53,7 +53,7 @@
 ### Authentication & APIs
 | Package | Version | Purpose |
 |---------|---------|---------|
-| [Clerk](https://clerk.com/) | 7.0.5 | Auth, user management, webhook provisioning |
+| [Clerk](https://clerk.com/) | 7.3.1 | Auth, user management, webhook provisioning |
 | [Groq SDK](https://groq.com/) | 1.1.2 | Ultra-fast LLM inference (Llama 3.3 70B) |
 | [Resend](https://resend.com/) | 6.9.4 | Transactional email API |
 | [Svix](https://svix.com/) | 1.92.2 | Clerk webhook signature verification |
@@ -87,15 +87,27 @@ hyperdrive-ai/
 │   │   │   ├── ai/
 │   │   │   │   └── generate/
 │   │   │   │       └── route.ts           # AI email generation (Groq, model fallback, caching)
+│   │   │   ├── analytics/
+│   │   │   │   └── route.ts               # Email & campaign analytics API
 │   │   │   ├── campaigns/
+│   │   │   │   ├── [id]/
+│   │   │   │   │   └── route.ts           # Campaign retrieval (by ID)
 │   │   │   │   ├── route.ts               # Campaign CRUD (GET, POST, PATCH, DELETE)
 │   │   │   │   └── send/
 │   │   │   │       └── route.ts           # Batch email send with retry + EmailLog persistence
 │   │   │   ├── health/
 │   │   │   │   └── route.ts               # Health check endpoint (DB connectivity)
-│   │   │   └── webhook/
-│   │   │       └── clerk/
-│   │   │           └── route.ts           # Clerk webhook — user & workspace provisioning
+│   │   │   ├── settings/
+│   │   │   │   └── check/
+│   │   │   │       └── route.ts           # Environment configuration check API
+│   │   │   ├── stats/
+│   │   │   │   └── route.ts               # Live statistics overview API
+│   │   │   ├── webhook/
+│   │   │   │   └── clerk/
+│   │   │   │       └── route.ts           # Clerk webhook — user & workspace provisioning
+│   │   │   └── webhooks/
+│   │   │       └── resend/
+│   │   │           └── route.ts           # Resend webhook — email delivery tracking
 │   │   ├── dashboard/
 │   │   │   ├── analytics/
 │   │   │   │   └── page.tsx               # Analytics view
@@ -165,11 +177,11 @@ User ──< Workspace ──< Campaign ──< EmailLog
 | `User` | `id`, `clerkId` (unique), `email` |
 | `Workspace` | `id`, `name`, `userId` (FK → User) |
 | `Campaign` | `id`, `name`, `goal`, `targetAudience`, `status (CampaignStatus)`, `deletedAt` |
-| `EmailLog` | `id`, `campaignId`, `recipient`, `subject`, `content`, `status (EmailStatus)`, `sentAt` |
+| `EmailLog` | `id`, `campaignId`, `recipient`, `subject`, `content`, `status (EmailStatus)`, `resendId` (unique), `sentAt` |
 
 **Enums:**
 - `CampaignStatus`: `DRAFT` | `ACTIVE` | `COMPLETED` | `PAUSED`
-- `EmailStatus`: `PENDING` | `SENT` | `FAILED` | `BOUNCED`
+- `EmailStatus`: `PENDING` | `SENT` | `DELIVERED` | `OPENED` | `CLICKED` | `FAILED` | `BOUNCED` | `COMPLAINED`
 
 **Indexes:** `Campaign(workspaceId, createdAt DESC)`, `EmailLog(campaignId, status)`, `EmailLog(campaignId, createdAt DESC)`
 
@@ -206,6 +218,7 @@ User ──< Workspace ──< Campaign ──< EmailLog
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `GET` | `/api/campaigns` | List campaigns (paginated) |
+| `GET` | `/api/campaigns/[id]` | Fetch campaign details and email logs |
 | `POST` | `/api/campaigns` | Create a new campaign |
 | `PATCH` | `/api/campaigns` | Update campaign fields / status |
 | `DELETE` | `/api/campaigns?id=<id>` | Soft-delete a campaign |
@@ -220,6 +233,17 @@ User ──< Workspace ──< Campaign ──< EmailLog
   "name": "Q3 Outreach",
   "goal": "Generate 50 qualified leads",
   "targetAudience": "B2B SaaS founders"
+}
+```
+
+**PATCH payload:**
+```json
+{
+  "id": "uuid",
+  "status": "PAUSED",
+  "name": "Updated name",
+  "goal": "Updated goal",
+  "targetAudience": "Updated target audience"
 }
 ```
 
@@ -243,7 +267,7 @@ User ──< Workspace ──< Campaign ──< EmailLog
 ```
 - Max **50 recipients** per request
 - Emails sent with **exponential backoff** retry (up to 3 attempts)
-- Campaign auto-transitions from `DRAFT → ACTIVE` on first successful send
+- Campaign status transitions to `COMPLETED` on successful execution of the batch send
 - Every send attempt is recorded in `EmailLog`
 
 ---
@@ -252,8 +276,38 @@ User ──< Workspace ──< Campaign ──< EmailLog
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `POST` | `/api/webhook/clerk` | Clerk user lifecycle events |
+| `POST` | `/api/webhooks/resend` | Resend email tracking events |
 
-Handles `user.created` to automatically provision a `User` + `Workspace` record in the database. Verified via Svix signature.
+* **Clerk Webhook:** Handles `user.created` to automatically provision a `User` + `Workspace` record in the database. Verified via Svix signature.
+* **Resend Webhook:** Receives email status callbacks (e.g., `sent`, `delivered`, `opened`, `clicked`, `bounced`, `complained`) and updates `EmailLog` status accordingly. Verified via Svix signature.
+
+---
+
+### Analytics & Live Stats
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/stats` | Retrieve live campaign and email metrics overview |
+| `GET` | `/api/analytics` | Retrieve aggregated email event analytics grouped by date |
+
+* **Live Stats:** Returns `{ activeCampaigns: number, totalSent: number, totalDelivered: number, deliveryRate: string }`.
+* **Analytics:** Returns `{ chartData: Array<{ date, sent, opened, clicked, failed }>, summary: { totalSent, openRate, clickRate } }`.
+
+---
+
+### Settings & Configuration Check
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/settings/check` | Verify system configuration flags (database, APIs, webhooks) |
+
+**Response:**
+```json
+{
+  "resendConfigured": true,
+  "groqConfigured": true,
+  "databaseConnected": true,
+  "webhookSecretSet": true
+}
+```
 
 ---
 
@@ -279,6 +333,7 @@ Copy `.env.example` to `.env.local` and fill in the values:
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk Publishable Key | ✅ |
 | `CLERK_SECRET_KEY` | Clerk Secret Key | ✅ |
 | `CLERK_WEBHOOK_SECRET` | Svix secret for Clerk webhook verification | ✅ |
+| `RESEND_WEBHOOK_SECRET` | Svix secret for Resend webhook verification | ⚠️ (Production) |
 | `GROQ_API_KEY` | Groq AI API key | ✅ |
 | `RESEND_API_KEY` | Resend API key | ✅ |
 | `RESEND_FROM_EMAIL` | Verified sender address (e.g. `noreply@yourdomain.com`) | ✅ |
@@ -373,7 +428,7 @@ Monitor your deployment health at `https://yourdomain.com/api/health`.
 | `dev` | `next dev` | Start development server |
 | `build` | `prisma generate && next build` | Production build |
 | `start` | `next start` | Start production server |
-| `lint` | `eslint .` | Run ESLint |
+| `lint` | `eslint . --ext .ts,.tsx,.js,.jsx` | Run ESLint with specific file extensions |
 | `test` | `vitest run` | Run unit tests |
 | `test:watch` | `vitest` | Run unit tests in watch mode |
 | `test:e2e` | `playwright test` | Run E2E tests |
