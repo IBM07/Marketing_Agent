@@ -48,7 +48,7 @@ export async function POST(req: Request) {
 
   // Do something with payload
   const eventType = evt.type;
-  console.log(`Received webhook with event type of ${eventType}`);
+  logger.info(`[CLERK_WEBHOOK] Received event type: ${eventType}`);
 
   if (eventType === 'user.created') {
     const { id, email_addresses, first_name } = evt.data;

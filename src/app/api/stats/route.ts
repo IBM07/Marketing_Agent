@@ -32,7 +32,7 @@ export const GET = apiHandler(async (_req: Request) => {
   const activeCampaigns = await prisma.campaign.count({
     where: {
       workspaceId,
-      status: "ACTIVE",
+      status: { in: ["ACTIVE", "PARTIAL"] },
       deletedAt: null,
     }
   });

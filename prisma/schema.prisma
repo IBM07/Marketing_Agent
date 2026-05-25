@@ -11,6 +11,7 @@ enum CampaignStatus {
   ACTIVE
   COMPLETED
   PAUSED
+  PARTIAL
 }
 
 enum EmailStatus {
@@ -22,26 +23,56 @@ enum EmailStatus {
   FAILED
   BOUNCED
   COMPLAINED
+  QUOTA_EXCEEDED
 }
 
 model User {
-  id         String      @id @default(uuid())
-  clerkId    String      @unique
-  email      String      @unique
-  createdAt  DateTime    @default(now())
-  updatedAt  DateTime    @updatedAt
-  workspaces Workspace[]
+  id           String      @id @default(uuid())
+  clerkId      String      @unique
+  email        String      @unique
+  smtpHost     String?
+  smtpPort     Int?
+  smtpUser     String?
+  smtpPassword String?     // Encrypted in the DB using AES-256-GCM
+  senderEmail  String?
+  senderName   String?
+  resendApiKey String?     // Encrypted in the DB using AES-256-GCM
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  workspaces   Workspace[]
 }
 
 model Workspace {
-  id          String     @id @default(uuid())
-  name        String
-  description String?
-  userId      String
-  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  campaigns   Campaign[]
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  id           String        @id @default(uuid())
+  name         String
+  description  String?
+  userId       String
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campaigns    Campaign[]
+  leads        Lead[]
+  unsubscribes Unsubscribe[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+}
+
+model Lead {
+  id             String         @id @default(uuid())
+  companyName    String         @default("Unknown")
+  prospectName   String         @default("Prospect")
+  email          String
+  phone          String?
+  role           String         @default("Unknown")
+  scrapedFromUrl String
+  isEnriched     Boolean        @default(false)
+  workspaceId    String
+  workspace      Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  campaignLeads  CampaignLead[]
+  emailLogs      EmailLog[]
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@unique([workspaceId, email])
+  @@index([workspaceId, createdAt(sort: Desc)])
 }
 
 model Campaign {
@@ -53,6 +84,7 @@ model Campaign {
   workspaceId    String
   workspace      Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   emailLogs      EmailLog[]
+  campaignLeads  CampaignLead[]
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
   deletedAt      DateTime?
@@ -60,18 +92,50 @@ model Campaign {
   @@index([workspaceId, createdAt(sort: Desc)])
 }
 
-model EmailLog {
-  id         String      @id @default(uuid())
+// Join table linking a Campaign to its target Leads
+model CampaignLead {
+  id         String   @id @default(uuid())
   campaignId String
-  campaign   Campaign    @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  recipient  String
-  subject    String
-  content    String
-  status     EmailStatus @default(PENDING)
-  resendId   String?     @unique
-  sentAt     DateTime?
-  createdAt  DateTime    @default(now())
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  leadId     String
+  lead       Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@unique([campaignId, leadId])
+  @@index([campaignId])
+  @@index([leadId])
+}
+
+model EmailLog {
+  id            String      @id @default(uuid())
+  campaignId    String
+  campaign      Campaign    @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  leadId        String?
+  lead          Lead?       @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  recipient     String
+  subject       String
+  content       String
+  status        EmailStatus @default(PENDING)
+  resendId      String?     @unique
+  smtpMessageId String?     @unique
+  sentAt        DateTime?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
 
   @@index([campaignId, status])
   @@index([campaignId, createdAt(sort: Desc)])
+  @@index([leadId])
+}
+
+// Stores opt-out requests for GDPR/CAN-SPAM compliance
+model Unsubscribe {
+  id          String    @id @default(uuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  email       String
+  reason      String?
+  createdAt   DateTime  @default(now())
+
+  @@unique([workspaceId, email])
+  @@index([workspaceId, email])
 }

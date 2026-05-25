@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, Sparkles, Target, Rocket, Loader2, CheckCircle2, Users, Bot, Send, Upload } from "lucide-react";
+import { ArrowLeft, Sparkles, Target, Rocket, Loader2, CheckCircle2, Users, Bot, Send, Upload, Zap, Globe } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -25,6 +25,17 @@ export default function NewCampaign() {
   const [recipientsList, setRecipientsList] = useState<string[]>([]);
   const [fileName, setFileName] = useState("");
 
+  // Scraper-first state
+  const [scrapePrompt, setScrapePrompt] = useState("");
+  const [isScraping, setIsScraping] = useState(false);
+  const [scrapePhase, setScrapePhase] = useState(0);
+  const [scrapeResult, setScrapeResult] = useState<{
+    leadsExtracted: number;
+    companySamples: string[];
+  } | null>(null);
+  const [scrapeError, setScrapeError] = useState<string | null>(null);
+  const [leadMode, setLeadMode] = useState<"scrape" | "upload">("scrape");
+
   // Add robust keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -36,11 +47,15 @@ export default function NewCampaign() {
         if (!hasModifier) return;
         
         e.preventDefault();
-        if (step < 3) {
+        if (step === 1 && recipientsList.length === 0) {
+          // Block continue from Step 1 if no leads
+          return;
+        }
+        if (step < 4) {
           setStep((s) => s + 1);
-        } else if (step === 3 && !isGenerating) {
+        } else if (step === 4 && !isGenerating) {
           handleGenerate();
-        } else if (step === 4 && !isSaving) {
+        } else if (step === 5 && !isSaving) {
           handleActivate();
         }
       }
@@ -91,6 +106,58 @@ export default function NewCampaign() {
   };
 
 
+  const SCRAPE_PHASES = [
+    "🔍 Searching the web...",
+    "🕷  Scraping websites...",
+    "🧠 Extracting contacts...",
+    "✓  Done!"
+  ];
+
+  const handleScrape = async () => {
+    if (!scrapePrompt.trim()) return;
+    setIsScraping(true);
+    setScrapeError(null);
+    setScrapeResult(null);
+    setScrapePhase(0);
+
+    const interval = setInterval(() =>
+      setScrapePhase(p => Math.min(p + 1, 2)), 3000
+    );
+
+    try {
+      const res = await fetch("/api/agent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: scrapePrompt }),
+      });
+      const data = await res.json();
+
+      clearInterval(interval);
+      setScrapePhase(3);
+
+      if (!res.ok || !data.success) {
+        setScrapeError(data.error || "Scraping failed. Try a different prompt.");
+        return;
+      }
+
+      if (data.leadsExtracted === 0) {
+        setScrapeError("No leads found. Try broadening your description.");
+        return;
+      }
+
+      setRecipientsList(data.leads.map((l: { email: string }) => l.email));
+      setScrapeResult({
+        leadsExtracted: data.leadsExtracted,
+        companySamples: data.leads.slice(0, 3).map((l: { companyName: string }) => l.companyName),
+      });
+    } catch {
+      clearInterval(interval);
+      setScrapeError("Network error. Please try again.");
+    } finally {
+      setIsScraping(false);
+    }
+  };
+
   const handleGenerate = async () => {
     setIsGenerating(true);
     try {
@@ -104,7 +171,7 @@ export default function NewCampaign() {
       if (res.ok) {
         setGeneratedSubject(data.subject || "Action Required");
         setGeneratedCopy(data.body || data.result || "No copy generated.");
-        setStep(4);
+        setStep(5);
       } else {
         alert(data || "Failed to generate copy");
       }
@@ -132,7 +199,7 @@ export default function NewCampaign() {
       const campaign = await campRes.json();
 
       if (recipientsList.length > 0) {
-        await fetch("/api/campaigns/send", {
+        const sendRes = await fetch("/api/campaigns/send", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -142,6 +209,22 @@ export default function NewCampaign() {
             content: generatedCopy,
           }),
         });
+        const sendData = await sendRes.json();
+        if (!sendRes.ok && sendRes.status === 429) {
+          // Don't show error — campaign saved, partial is expected
+          setIsSaving(false);
+          setIsSuccess(true);
+          // Redirect to campaign detail instead of dashboard so user sees the PARTIAL banner
+          setTimeout(() => router.push(`/dashboard/campaigns/${campaign.id}`), 2000);
+          return;
+        }
+        // If partial send (some sent, some skipped) — still show success
+        if (sendData.isPartial) {
+          setIsSaving(false);
+          setIsSuccess(true);
+          setTimeout(() => router.push(`/dashboard/campaigns/${campaign.id}`), 2000);
+          return;
+        }
       }
 
       setIsSaving(false);
@@ -156,8 +239,8 @@ export default function NewCampaign() {
     }
   };
 
-  // Adjust progress bar logic for 4 steps now
-  const progressPercentage = (step / 4) * 100;
+  // Adjust progress bar logic for 5 steps now
+  const progressPercentage = (step / 5) * 100;
 
   return (
     <div className="max-w-4xl mx-auto pb-12">
@@ -174,7 +257,7 @@ export default function NewCampaign() {
         <div className="absolute top-0 left-0 right-0 h-1 bg-card-border/50">
           <motion.div
             className="h-full bg-gradient-to-r from-primary to-secondary"
-            initial={{ width: "25%" }}
+            initial={{ width: "20%" }}
             animate={{ width: `${progressPercentage}%` }}
             transition={{ duration: 0.5, ease: "easeInOut" }}
           />
@@ -229,6 +312,128 @@ export default function NewCampaign() {
                   <div className="space-y-6">
                     <div className="flex items-center gap-3 mb-8">
                       <div className="w-10 h-10 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center">
+                        <Globe className="w-5 h-5 text-primary" />
+                      </div>
+                      <div>
+                        <h2 className="text-xl font-semibold">Find Leads</h2>
+                        <p className="text-sm text-muted-foreground">Describe who you want to reach</p>
+                      </div>
+                    </div>
+
+                    {/* Tab: Scrape vs Upload */}
+                    <div className="flex gap-2 p-1 bg-background/30 rounded-lg border border-card-border/50 w-fit">
+                      <button
+                        onClick={() => setLeadMode("scrape")}
+                        className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${leadMode === "scrape" ? "bg-primary/10 text-primary border border-primary/20" : "text-muted-foreground hover:text-foreground"}`}
+                      >
+                        <Bot className="w-4 h-4" /> Auto-Scrape (AI)
+                      </button>
+                      <button
+                        onClick={() => setLeadMode("upload")}
+                        className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${leadMode === "upload" ? "bg-primary/10 text-primary border border-primary/20" : "text-muted-foreground hover:text-foreground"}`}
+                      >
+                        <Upload className="w-4 h-4" /> Upload CSV
+                      </button>
+                    </div>
+
+                    {leadMode === "scrape" && (
+                      <div className="space-y-4">
+                        <textarea
+                          id="scrapePrompt"
+                          rows={3}
+                          placeholder='e.g. "SaaS founders in NYC doing $10k-50k MRR without a marketing team"'
+                          value={scrapePrompt}
+                          onChange={e => setScrapePrompt(e.target.value)}
+                          className="w-full bg-background/50 border border-card-border rounded-md px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all text-sm font-mono resize-none"
+                        />
+
+                        {/* Phase progress */}
+                        {isScraping && (
+                          <div className="p-4 rounded-lg border border-card-border/50 bg-card/10 space-y-2">
+                            {SCRAPE_PHASES.map((msg, i) => (
+                              <div key={i} className={`text-sm font-mono transition-opacity duration-300 ${i <= scrapePhase ? "opacity-100 text-foreground" : "opacity-30 text-muted-foreground"}`}>
+                                {msg}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Success state */}
+                        {scrapeResult && (
+                          <div className="text-sm text-green-500 font-medium bg-green-500/10 p-4 rounded-lg border border-green-500/20 flex items-center gap-2">
+                            <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                            <span>
+                              <strong>{scrapeResult.leadsExtracted}</strong> verified leads found
+                              — {scrapeResult.companySamples.join(", ")}
+                              {scrapeResult.leadsExtracted > 3 ? " and more" : ""}
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Error / 0-leads state */}
+                        {scrapeError && (
+                          <div className="p-4 rounded-lg border border-orange-500/20 bg-orange-500/10 space-y-3">
+                            <p className="text-sm text-orange-400">⚠️ {scrapeError}</p>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => { setScrapeError(null); setScrapeResult(null); }}
+                                className="px-4 py-2 text-xs font-medium rounded-md bg-card border border-card-border hover:bg-card-hover transition-all"
+                              >
+                                🔄 Try Again
+                              </button>
+                              <button
+                                onClick={() => { setScrapeError(null); setLeadMode("upload"); }}
+                                className="px-4 py-2 text-xs font-medium rounded-md bg-card border border-card-border hover:bg-card-hover transition-all"
+                              >
+                                📂 Upload CSV Instead
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {!scrapeResult && !scrapeError && (
+                          <button
+                            onClick={handleScrape}
+                            disabled={isScraping || !scrapePrompt.trim()}
+                            className="bg-primary hover:bg-primary-hover text-primary-foreground px-6 py-2.5 rounded-md font-medium flex items-center gap-2 transition-all disabled:opacity-50 shadow-[0_0_20px_-5px_var(--tw-shadow-color)] shadow-primary/40"
+                          >
+                            {isScraping ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
+                            {isScraping ? "Finding leads..." : "⚡ Find Leads"}
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {leadMode === "upload" && (
+                      <div className="space-y-4">
+                        <label className="flex items-center justify-center w-full min-h-[120px] border-2 border-dashed border-card-border/50 rounded-lg hover:border-primary/50 transition-colors cursor-pointer bg-background/30">
+                          <div className="flex flex-col items-center justify-center py-4">
+                            <Upload className="w-6 h-6 text-muted-foreground mb-2" />
+                            <p className="text-sm text-muted-foreground text-center px-4">
+                              {fileName ? fileName : "Click to upload .csv, .xlsx, or .xls files"}
+                            </p>
+                          </div>
+                          <input
+                            type="file"
+                            accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel"
+                            onChange={handleFileUpload}
+                            className="hidden"
+                          />
+                        </label>
+                        {recipientsList.length > 0 && (
+                          <div className="text-sm text-green-500 font-medium bg-green-500/10 p-3 rounded-md border border-green-500/20">
+                            ✓ {recipientsList.length} valid email recipients extracted.
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {step === 2 && (
+                  <div className="space-y-6">
+                    <div className="flex items-center gap-3 mb-8">
+                      <div className="w-10 h-10 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center">
                         <Target className="w-5 h-5 text-primary" />
                       </div>
                       <div>
@@ -269,7 +474,7 @@ export default function NewCampaign() {
                   </div>
                 )}
 
-                {step === 2 && (
+                {step === 3 && (
                   <div className="space-y-6">
                     <div className="flex items-center gap-3 mb-8">
                       <div className="w-10 h-10 rounded-lg bg-secondary/10 border border-secondary/20 flex items-center justify-center">
@@ -297,7 +502,7 @@ export default function NewCampaign() {
                   </div>
                 )}
 
-                {step === 3 && (
+                {step === 4 && (
                   <div className="space-y-6">
                     <div className="flex items-center gap-3 mb-8">
                       <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary to-secondary flex items-center justify-center shadow-lg shadow-primary/20">
@@ -325,7 +530,7 @@ export default function NewCampaign() {
                   </div>
                 )}
 
-                {step === 4 && (
+                {step === 5 && (
                   <div className="space-y-6">
                     <div className="flex items-center gap-3 mb-8">
                       <div className="w-10 h-10 rounded-lg bg-green-500/10 border border-green-500/20 flex items-center justify-center shadow-lg">
@@ -357,27 +562,14 @@ export default function NewCampaign() {
                         ></textarea>
                       </div>
                       <div className="pt-4 border-t border-card-border/50">
-                        <label className="block text-sm font-medium mb-2 text-muted-foreground">Upload Recipients List (CSV, Excel)</label>
-                        <div className="flex flex-col gap-4">
-                          <label className="flex items-center justify-center w-full min-h-[100px] border-2 border-dashed border-card-border/50 rounded-lg hover:border-primary/50 transition-colors cursor-pointer bg-background/30">
-                            <div className="flex flex-col items-center justify-center py-4">
-                              <Upload className="w-6 h-6 text-muted-foreground mb-2" />
-                              <p className="text-sm text-muted-foreground text-center px-4">
-                                {fileName ? fileName : "Click to upload .csv, .xlsx, or .xls files"}
-                              </p>
-                            </div>
-                            <input
-                              type="file"
-                              accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel"
-                              onChange={handleFileUpload}
-                              className="hidden"
-                            />
-                          </label>
-                          {recipientsList.length > 0 && (
-                            <div className="text-sm text-green-500 font-medium bg-green-500/10 p-3 rounded-md border border-green-500/20">
-                              ✓ {recipientsList.length} valid email recipients extracted.
-                            </div>
-                          )}
+                        <div className="flex items-center gap-2 p-3 rounded-md bg-card/10 border border-card-border/50">
+                          <Send className="w-4 h-4 text-muted-foreground" />
+                          <span className="text-sm">
+                            📧 <strong>{recipientsList.length}</strong> recipients ready to receive this email
+                            {recipientsList.length === 0 && (
+                              <span className="text-orange-400 ml-1"> — go back to Step 1 to find leads</span>
+                            )}
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -394,15 +586,16 @@ export default function NewCampaign() {
                     Previous
                   </button>
 
-                  {step < 3 ? (
+                  {step < 4 ? (
                     <button
                       onClick={() => setStep(step + 1)}
-                      className="bg-foreground text-background hover:bg-white/90 px-6 py-2 rounded-md font-medium transition-all flex items-center gap-3"
+                      disabled={step === 1 && recipientsList.length === 0}
+                      className="bg-foreground text-background hover:bg-white/90 px-6 py-2 rounded-md font-medium transition-all flex items-center gap-3 disabled:opacity-50"
                     >
                       Continue
                       <span className="text-[10px] uppercase font-mono tracking-widest opacity-60 flex items-center gap-1"><kbd className="bg-background/10 px-1.5 py-0.5 rounded">Ctrl</kbd>+<kbd className="bg-background/10 px-1.5 py-0.5 rounded">Enter</kbd></span>
                     </button>
-                  ) : step === 3 ? (
+                  ) : step === 4 ? (
                     <button
                       onClick={handleGenerate}
                       className="bg-primary hover:bg-primary-hover text-primary-foreground px-8 py-2 rounded-md font-medium flex items-center gap-3 transition-all shadow-[0_0_20px_-5px_var(--tw-shadow-color)] shadow-primary/40 relative overflow-hidden group"

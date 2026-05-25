@@ -14,7 +14,7 @@ const CampaignSchema = z.object({
 
 const UpdateCampaignSchema = z.object({
   id: z.string().uuid(),
-  status: z.enum(["DRAFT", "ACTIVE", "COMPLETED", "PAUSED"]).optional(),
+  status: z.enum(["DRAFT", "ACTIVE", "COMPLETED", "PAUSED", "PARTIAL"]).optional(),
   name: z.string().max(100).optional(),
   goal: z.string().max(2000).optional(),
   targetAudience: z.string().max(2000).optional(),

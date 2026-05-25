@@ -5,7 +5,10 @@ import { apiHandler } from "@/lib/api-handler";
 import { UnauthorizedError, NotFoundError } from "@/lib/errors";
 
 export const GET = apiHandler(async (req: Request, context: unknown) => {
-  const { params } = context as { params: { id: string } };
+  // Await params FIRST — Next.js 15 requires this before any property access
+  const { params } = context as { params: Promise<{ id: string }> };
+  const { id: campaignId } = await params;
+
   const { userId } = await auth();
 
   if (!userId) {
@@ -22,7 +25,6 @@ export const GET = apiHandler(async (req: Request, context: unknown) => {
   }
 
   const workspaceId = user.workspaces[0].id;
-  const campaignId = params.id;
 
   const campaign = await prisma.campaign.findUnique({
     where: { id: campaignId },

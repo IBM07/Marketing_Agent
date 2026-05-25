@@ -118,6 +118,7 @@ export default function DashboardOverview() {
                   <span className={`text-xs px-2 py-1 rounded-full border ${
                     campaign.status === 'ACTIVE' ? 'bg-green-500/10 text-green-500 border-green-500/20' : 
                     campaign.status === 'COMPLETED' ? 'bg-blue-500/10 text-blue-500 border-blue-500/20' : 
+                    campaign.status === 'PARTIAL' ? 'bg-orange-500/10 text-orange-500 border-orange-500/20' :
                     'bg-yellow-500/10 text-yellow-500 border-yellow-500/20'
                   }`}>
                     {campaign.status}
@@ -128,12 +129,12 @@ export default function DashboardOverview() {
               <div className="md:w-64">
                 <div className="flex justify-between text-xs mb-2 text-muted-foreground">
                   <span>Progress</span>
-                  <span>{campaign.status === 'ACTIVE' ? '100' : campaign.status === 'COMPLETED' ? '100' : '50'}%</span>
+                  <span>{campaign.status === 'ACTIVE' ? '100' : campaign.status === 'COMPLETED' ? '100' : campaign.status === 'PARTIAL' ? '75' : '50'}%</span>
                 </div>
                 <div className="w-full h-2 bg-card-border/50 rounded-full overflow-hidden">
                   <div 
                     className="h-full bg-gradient-to-r from-primary to-secondary transition-all duration-1000 ease-out" 
-                    style={{ width: `${campaign.status === 'ACTIVE' ? 100 : campaign.status === 'COMPLETED' ? 100 : 50}%` }}
+                    style={{ width: `${campaign.status === 'ACTIVE' ? 100 : campaign.status === 'COMPLETED' ? 100 : campaign.status === 'PARTIAL' ? 75 : 50}%` }}
                   ></div>
                 </div>
               </div>
