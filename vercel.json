@@ -9,7 +9,7 @@
   },
   "functions": {
     "src/app/api/agent/route.ts": {
-      "maxDuration": 1222222
+      "maxDuration": 60
     }
   },
   "crons": [
