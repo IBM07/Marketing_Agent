@@ -5,9 +5,19 @@ const envSchema = z.object({
   NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: z.string().startsWith('pk_'),
   CLERK_SECRET_KEY: z.string().startsWith('sk_'),
   GROQ_API_KEY: z.string().startsWith('gsk_'),
-  RESEND_API_KEY: z.string().startsWith('re_'),
+  RESEND_API_KEY: z.string().startsWith('re_').optional(),
   CLERK_WEBHOOK_SECRET: z.string().min(1),
-  RESEND_FROM_EMAIL: z.string().email(),
+  RESEND_FROM_EMAIL: z.string().email().optional(),
+  ENCRYPTION_KEY: z.string().min(32, 'ENCRYPTION_KEY must be at least 32 characters'),
+  CRON_SECRET: z.string().min(16, 'CRON_SECRET must be at least 16 characters'),
+  GEMINI_API_KEY: z.string().min(1).optional(),
+  RESEND_WEBHOOK_SECRET: z.string().min(1).optional(),
+  CEREBRAS_API_KEY: z.string().min(1).optional(),
+  SERPER_API_KEY: z.string().min(1).optional(),
+  // Plural comma-separated pools — used by KeyRotationLLMClient for multi-key rotation
+  CEREBRAS_API_KEYS: z.string().min(1).optional(),
+  GROQ_API_KEYS: z.string().min(1).optional(),
+  GEMINI_API_KEYS: z.string().min(1).optional(),
 });
 
 export const env = envSchema.parse(process.env);

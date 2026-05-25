@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Send, Activity, Users, AlertCircle, Loader2 } from "lucide-react";
+import { ArrowLeft, Send, Activity, Users, AlertCircle, Loader2, Clock, MousePointerClick } from "lucide-react";
 
 type EmailLog = {
   id: string;
@@ -10,6 +10,7 @@ type EmailLog = {
   subject: string;
   status: string;
   createdAt: string;
+  resendId?: string | null;
 };
 
 type Campaign = {
@@ -19,7 +20,8 @@ type Campaign = {
   emailLogs: EmailLog[];
 };
 
-export default function CampaignDetailsPage({ params }: { params: { id: string } }) {
+export default function CampaignDetailsPage({ params: paramsPromise }: { params: Promise<{ id: string }> }) {
+  const params = React.use(paramsPromise);
   const [campaign, setCampaign] = useState<Campaign | null>(null);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -68,6 +70,8 @@ export default function CampaignDetailsPage({ params }: { params: { id: string }
   const sentLogs = logs.filter(l => ["SENT", "DELIVERED", "OPENED", "CLICKED"].includes(l.status));
   const openedLogs = logs.filter(l => ["OPENED", "CLICKED"].includes(l.status));
   const bouncedLogs = logs.filter(l => ["BOUNCED", "FAILED"].includes(l.status));
+  const quotaSkippedLogs = logs.filter(l => l.status === "QUOTA_EXCEEDED");
+  const clickedLogs = logs.filter(l => l.status === "CLICKED");
 
   const totalSent = sentLogs.length;
   const openRate = totalSent > 0 ? ((openedLogs.length / totalSent) * 100).toFixed(1) : "0";
@@ -75,6 +79,9 @@ export default function CampaignDetailsPage({ params }: { params: { id: string }
 
   const paginatedLogs = logs.slice((page - 1) * logsPerPage, page * logsPerPage);
   const totalPages = Math.ceil(totalLeads / logsPerPage);
+
+  // Detect if this is a pure SMTP campaign (no resendIds)
+  const isSMTPCampaign = logs.length > 0 && logs.every(l => !l.resendId);
 
   return (
     <div className="space-y-6">
@@ -94,6 +101,7 @@ export default function CampaignDetailsPage({ params }: { params: { id: string }
           <span className={`px-3 py-1 rounded-full text-xs font-medium border ${
             campaign.status === "ACTIVE" ? "bg-green-500/10 text-green-500 border-green-500/20" :
             campaign.status === "COMPLETED" ? "bg-blue-500/10 text-blue-500 border-blue-500/20" :
+            campaign.status === "PARTIAL" ? "bg-orange-500/10 text-orange-500 border-orange-500/20" :
             "bg-yellow-500/10 text-yellow-500 border-yellow-500/20"
           }`}>
             {campaign.status}
@@ -101,7 +109,15 @@ export default function CampaignDetailsPage({ params }: { params: { id: string }
         </div>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-4">
+      {/* Quota banner for PARTIAL campaigns */}
+      {campaign.status === "PARTIAL" && (
+        <div className="p-4 rounded-xl border border-orange-500/20 bg-orange-500/10 text-orange-400">
+          ⚠️ <strong>100 email limit reached!</strong> Campaign partially sent.
+          Remaining emails resume automatically after 24 hours.
+        </div>
+      )}
+
+      <div className="grid gap-6 md:grid-cols-6">
         <div className="p-6 rounded-xl border border-card-border/50 bg-card/10 backdrop-blur-sm">
           <div className="flex items-center gap-3 mb-2">
             <Users className="w-5 h-5 text-muted-foreground" />
@@ -130,7 +146,28 @@ export default function CampaignDetailsPage({ params }: { params: { id: string }
           </div>
           <p className={`text-3xl font-bold ${bouncedCount > 0 ? "text-destructive" : ""}`}>{bouncedCount}</p>
         </div>
+        <div className="p-6 rounded-xl border border-card-border/50 bg-card/10 backdrop-blur-sm">
+          <div className="flex items-center gap-3 mb-2">
+            <Clock className="w-5 h-5 text-orange-400" />
+            <h3 className="text-sm font-medium text-muted-foreground">Quota Skipped</h3>
+          </div>
+          <p className={`text-3xl font-bold ${quotaSkippedLogs.length > 0 ? "text-orange-400" : ""}`}>{quotaSkippedLogs.length}</p>
+        </div>
+        <div className="p-6 rounded-xl border border-card-border/50 bg-card/10 backdrop-blur-sm">
+          <div className="flex items-center gap-3 mb-2">
+            <MousePointerClick className="w-5 h-5 text-muted-foreground" />
+            <h3 className="text-sm font-medium text-muted-foreground">Clicks</h3>
+          </div>
+          <p className="text-3xl font-bold">{clickedLogs.length}</p>
+        </div>
       </div>
+
+      {/* SMTP tracking notice */}
+      {isSMTPCampaign && (
+        <p className="text-xs text-muted-foreground mt-2">
+          ℹ️ Open/click tracking unavailable for SMTP emails. Emails are marked Sent once the mail server accepts them.
+        </p>
+      )}
 
       <div className="rounded-xl border border-card-border/50 bg-card/5 overflow-hidden flex flex-col">
         <div className="border-b border-card-border/50 px-6 py-4 bg-card/20 flex justify-between items-center">
@@ -164,6 +201,7 @@ export default function CampaignDetailsPage({ params }: { params: { id: string }
                           log.status === "DELIVERED" ? "bg-green-500/10 text-green-500 border-green-500/20" :
                           ["OPENED", "CLICKED"].includes(log.status) ? "bg-blue-500/10 text-blue-500 border-blue-500/20" :
                           ["FAILED", "BOUNCED", "COMPLAINED"].includes(log.status) ? "bg-red-500/10 text-red-500 border-red-500/20" :
+                          log.status === "QUOTA_EXCEEDED" ? "bg-orange-500/10 text-orange-400 border-orange-500/20" :
                           "bg-zinc-500/10 text-zinc-400 border-zinc-500/20"
                         }`}>
                           {log.status}

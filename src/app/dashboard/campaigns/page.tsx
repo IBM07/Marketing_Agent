@@ -77,6 +77,7 @@ export default function CampaignsPage() {
           <option value="ACTIVE">Active</option>
           <option value="COMPLETED">Completed</option>
           <option value="PAUSED">Paused</option>
+          <option value="PARTIAL">Partial</option>
           <option value="DRAFT">Draft</option>
         </select>
       </div>
@@ -118,6 +119,8 @@ export default function CampaignsPage() {
                           ? "bg-green-500/10 text-green-500 border-green-500/20"
                           : campaign.status === "COMPLETED"
                           ? "bg-blue-500/10 text-blue-500 border-blue-500/20"
+                          : campaign.status === "PARTIAL"
+                          ? "bg-orange-500/10 text-orange-500 border-orange-500/20"
                           : "bg-yellow-500/10 text-yellow-500 border-yellow-500/20"
                       }`}
                     >

@@ -14,6 +14,7 @@ export const GET = apiHandler(async (_req: Request) => {
   return NextResponse.json({
     resendConfigured: !!process.env.RESEND_API_KEY,
     groqConfigured: !!process.env.GROQ_API_KEY,
+    cerebrasConfigured: !!process.env.CEREBRAS_API_KEY,
     databaseConnected: !!process.env.DATABASE_URL,
     webhookSecretSet: !!process.env.RESEND_WEBHOOK_SECRET
   });

@@ -28,3 +28,13 @@ export class ValidationError extends AppError {
     super(400, message, code);
   }
 }
+
+export class QuotaError extends AppError {
+  public quotaUsed: number;
+  public quotaLimit: number;
+  constructor(message = 'Daily email quota exceeded.', quotaUsed = 0, quotaLimit = 100) {
+    super(429, message, 'DAILY_QUOTA_EXCEEDED');
+    this.quotaUsed = quotaUsed;
+    this.quotaLimit = quotaLimit;
+  }
+}

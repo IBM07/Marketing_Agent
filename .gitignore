@@ -75,3 +75,6 @@ test-results/
 
 # Local checks
 check_problems/
+
+# CV
+cv_ibm/
