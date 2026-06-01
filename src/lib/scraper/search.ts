@@ -67,7 +67,7 @@ export async function searchWeb(query: string, maxResults: number = 15): Promise
       },
       body: JSON.stringify({
         q: query,
-        num: 20, // Request 20 results so filtering still yields enough scrapeable URLs
+        num: 100, // Request maximum (100) results from Serper to maximize filtered lead pool
       }),
     });
 

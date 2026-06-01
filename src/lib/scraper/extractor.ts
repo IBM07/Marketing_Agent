@@ -64,8 +64,8 @@ export async function extractLeadsFromUrl(
           "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.5",
       },
-      // 12 second timeout — generous but won't stall the batch pipeline
-      signal: AbortSignal.timeout(12_000),
+      // 5 second timeout — generous but won't stall the batch pipeline
+      signal: AbortSignal.timeout(5_000),
     });
 
     if (!response.ok) {

@@ -27,9 +27,7 @@ export default function Home() {
           
           <nav className="hidden md:flex items-center gap-8 text-sm text-muted-foreground font-medium">
             <Link href="#features" className="hover:text-foreground transition-colors">Features</Link>
-            <Link href="#solutions" className="hover:text-foreground transition-colors">Solutions</Link>
-            <Link href="#pricing" className="hover:text-foreground transition-colors">Pricing</Link>
-            <Link href="#docs" className="hover:text-foreground transition-colors">Docs</Link>
+            <Link href="/docs" className="hover:text-foreground transition-colors">Docs</Link>
           </nav>
 
           <div className="flex items-center gap-4">
@@ -45,15 +43,7 @@ export default function Home() {
         {/* Subtle dark radial anchor behind text */}
         <div className="absolute inset-0 z-[-1] bg-[radial-gradient(ellipse_70%_60%_at_50%_50%,rgba(0,0,0,0.7)_0%,rgba(0,0,0,0)_100%)] pointer-events-none"></div>
 
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, ease: "easeOut" }}
-          className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-card-border bg-card/50 backdrop-blur-sm mb-8"
-        >
-          <span className="w-2 h-2 rounded-full bg-secondary"></span>
-          <span className="text-xs font-medium text-secondary tracking-widest uppercase">Next-Gen Marketing Infrastructure</span>
-        </motion.div>
+
         
         <motion.h1 
           initial={{ opacity: 0, y: 20 }}
@@ -62,7 +52,7 @@ export default function Home() {
           className="text-5xl md:text-7xl lg:text-8xl font-bold tracking-tighter mb-6 drop-shadow-[0_4px_24px_rgba(0,0,0,1)]"
         >
           Autonomous AI <br />
-          <span className="text-gradient">Marketing on Steroids</span>
+          <span className="text-gradient">Lead Generation Engine</span>
         </motion.h1>
         
         <motion.p 
@@ -71,7 +61,7 @@ export default function Home() {
           transition={{ duration: 0.8, delay: 0.4, ease: "easeOut" }}
           className="text-lg md:text-xl text-muted-foreground max-w-2xl mb-10 text-balance leading-relaxed drop-shadow-[0_2px_12px_rgba(0,0,0,1)] text-[#e5e5e5]"
         >
-          Deploy agents that research, create, and optimize your entire growth engine 24/7. No prompts required.
+          Deploy agents that search the web, scrape high-quality data, and extract verified contacts.
         </motion.p>
 
         <motion.div 
@@ -84,7 +74,7 @@ export default function Home() {
             Deploy Agent
             <ArrowRight className="w-4 h-4" />
           </Link>
-          <Link href="#demo" className="px-8 py-4 rounded-md border border-secondary text-secondary hover:bg-secondary/10 font-medium flex items-center gap-2 transition-colors">
+          <Link href="#" className="px-8 py-4 rounded-md border border-secondary text-secondary hover:bg-secondary/10 font-medium flex items-center gap-2 transition-colors">
             View Demo
             <Play className="w-4 h-4" />
           </Link>
@@ -94,12 +84,12 @@ export default function Home() {
       {/* Partners / Social Proof */}
       <section className="w-full border-y border-card-border/50 bg-background/50 backdrop-blur-md py-8 mt-24 z-10">
         <div className="max-w-7xl mx-auto px-6 flex flex-col items-center">
-          <p className="text-xs font-semibold text-muted-foreground tracking-widest uppercase mb-6">Powering 500+ High-Growth Teams</p>
+          <p className="text-xs font-semibold text-muted-foreground tracking-widest uppercase mb-6">Powered by Industry-Leading AI Models</p>
           <div className="flex flex-wrap justify-center gap-8 md:gap-16 opacity-50 grayscale hover:grayscale-0 transition-all duration-500">
-            <span className="text-xl font-bold tracking-widest text-muted-foreground">TECHNO</span>
-            <span className="text-xl font-black italic tracking-tighter text-muted-foreground">HYPERDRIVE</span>
-            <span className="text-xl font-medium tracking-widest text-muted-foreground">QUANTUM</span>
-            <span className="text-xl font-bold tracking-wide text-muted-foreground">CYBERNET</span>
+            <span className="text-xl font-bold tracking-widest text-muted-foreground">Llama 3</span>
+            <span className="text-xl font-black italic tracking-tighter text-muted-foreground">Groq</span>
+            <span className="text-xl font-medium tracking-widest text-muted-foreground">Gemini</span>
+            <span className="text-xl font-bold tracking-wide text-muted-foreground">Cerebras</span>
           </div>
         </div>
       </section>
@@ -113,15 +103,15 @@ export default function Home() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           
-          {/* Feature Card 1 - Local AI */}
+          {/* Feature Card 1 - Autonomous Web Scraping */}
           <motion.div 
             initial={{ opacity: 0, y: 50 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: "-100px" }}
             transition={{ duration: 0.6 }}
-            className="col-span-1 border border-card-border bg-background/85 backdrop-blur-3xl rounded-xl p-8 shadow-2xl lg:col-span-7 flex flex-col justify-between overflow-hidden relative group"
+            className="col-span-1 border border-card-border bg-background/85 backdrop-blur-3xl rounded-xl p-8 shadow-2xl flex flex-col justify-between overflow-hidden relative group"
           >
             <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
             
@@ -132,61 +122,58 @@ export default function Home() {
                 <div className="w-3 h-3 rounded-full bg-green-500"></div>
                 <span className="text-muted-foreground ml-2">hyper-drive-engine.exe</span>
               </div>
-              <div className="text-secondary flex gap-2"><span>&gt;</span> <span className="animate-pulse">connecting_to_resend_relay...|</span></div>
-              <div className="text-primary mt-2 flex gap-2"><span>&gt;</span> <span>Deploying automated sequence...</span></div>
-              <div className="text-muted-foreground mt-2 flex gap-2"><span>&gt;</span> <span>Webhook: email.delivered [id: 7f3a...9e1c]</span></div>
-              <div className="text-green-500 mt-2 flex gap-2"><span>&gt;</span> <span>Campaign status: 100% delivered</span></div>
+              <div className="text-secondary flex gap-2"><span>&gt;</span> <span className="animate-pulse">Initializing web search...|</span></div>
+              <div className="text-primary mt-2 flex gap-2"><span>&gt;</span> <span>Locating target domains...</span></div>
+              <div className="text-green-500 mt-2 flex gap-2"><span>&gt;</span> <span>Extracting contact information...</span></div>
             </div>
 
             <div className="relative z-10 mt-auto">
               <h3 className="text-2xl font-bold mb-2 flex items-center gap-3">
-                <Terminal className="text-primary w-6 h-6" /> Automated Campaigns
+                <Terminal className="text-primary w-6 h-6" /> Autonomous Web Scraping
               </h3>
               <p className="text-muted-foreground">
-                Deploy intelligent email sequences that reach your audience exactly when it matters. No manual intervention required.
+                Deploy agents that autonomously crawl domains and extract high-quality leads. No manual intervention required.
               </p>
             </div>
           </motion.div>
 
-          {/* Feature Card 2 - Omnichannel */}
+          {/* Feature Card 2 - Smart Contact Extraction */}
           <motion.div 
             initial={{ opacity: 0, y: 50 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: "-100px" }}
             transition={{ duration: 0.6, delay: 0.2 }}
-            className="col-span-1 border border-card-border bg-background/85 backdrop-blur-3xl rounded-xl p-8 shadow-2xl lg:col-span-5 flex flex-col justify-between relative group"
+            className="col-span-1 border border-card-border bg-background/85 backdrop-blur-3xl rounded-xl p-8 shadow-2xl flex flex-col justify-between relative group"
           >
              <div className="absolute inset-0 bg-gradient-to-br from-secondary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
              
-             <div className="mb-8 w-full h-32 flex flex-col justify-center gap-4 relative z-10">
-                <div className="h-2 w-3/4 bg-primary/20 rounded-full overflow-hidden">
-                  <div className="h-full bg-primary w-[80%]"></div>
-                </div>
-                <div className="h-2 w-full bg-secondary/20 rounded-full overflow-hidden">
-                  <div className="h-full bg-secondary w-[60%] ml-[20%]"></div>
-                </div>
-                <div className="h-2 w-2/3 bg-white/10 rounded-full overflow-hidden">
-                  <div className="h-full bg-white w-[90%]"></div>
-                </div>
+             <div className="mb-8 w-full h-32 flex flex-col justify-center items-center gap-4 relative z-10 font-mono text-xl sm:text-2xl font-bold">
+               <span className="text-muted-foreground/50">&lt;html&gt;</span>
+               <div className="flex flex-col items-center gap-1">
+                 <div className="w-1 h-1 rounded-full bg-primary animate-bounce" style={{ animationDelay: "0ms" }}></div>
+                 <div className="w-1 h-1 rounded-full bg-primary animate-bounce" style={{ animationDelay: "150ms" }}></div>
+                 <div className="w-1 h-1 rounded-full bg-primary animate-bounce" style={{ animationDelay: "300ms" }}></div>
+               </div>
+               <span className="text-secondary">{"{ JSON }"}</span>
              </div>
 
              <div className="relative z-10 mt-auto">
               <h3 className="text-2xl font-bold mb-2 flex items-center gap-3">
-                <BarChart3 className="text-secondary w-6 h-6" /> Real-time Analytics
+                <BarChart3 className="text-secondary w-6 h-6" /> Smart Contact Extraction
               </h3>
               <p className="text-muted-foreground">
-                Track every delivery, open, and click as they happen. Stay informed with precise campaign metrics.
+                Transform raw website data into structured, verified contact information ready for your pipeline.
               </p>
             </div>
           </motion.div>
 
-          {/* Feature Card 3 - Personalization */}
+          {/* Feature Card 3 - High-Yield Search Orchestration */}
           <motion.div 
             initial={{ opacity: 0, y: 50 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: "-100px" }}
             transition={{ duration: 0.6, delay: 0.1 }}
-            className="col-span-1 border border-card-border bg-background/85 backdrop-blur-3xl rounded-xl p-8 shadow-2xl lg:col-span-6 flex flex-col justify-between relative group"
+            className="col-span-1 border border-card-border bg-background/85 backdrop-blur-3xl rounded-xl p-8 shadow-2xl flex flex-col justify-between relative group"
           >
              <div className="absolute inset-0 bg-gradient-to-br from-secondary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
              
@@ -201,43 +188,10 @@ export default function Home() {
 
              <div className="relative z-10 mt-auto">
               <h3 className="text-2xl font-bold mb-2 flex items-center gap-3">
-                <Target className="text-secondary w-6 h-6" /> Smart Workspaces
+                <Target className="text-secondary w-6 h-6" /> High-Yield Search Orchestration
               </h3>
               <p className="text-muted-foreground">
-                Organize your campaigns into dedicated workspaces. Scale your marketing team with perfect isolation.
-              </p>
-            </div>
-          </motion.div>
-
-          {/* Feature Card 4 - ROI */}
-          <motion.div 
-            initial={{ opacity: 0, y: 50 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: "-100px" }}
-            transition={{ duration: 0.6, delay: 0.3 }}
-            className="col-span-1 border border-card-border bg-background/85 backdrop-blur-3xl rounded-xl p-8 shadow-2xl lg:col-span-6 flex flex-col justify-between relative group"
-          >
-             <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
-             
-             <div className="mb-12 h-32 flex items-end justify-center gap-2 relative z-10">
-                {[40, 60, 45, 80, 55, 90, 70].map((height, i) => (
-                  <div 
-                    key={i} 
-                    className="w-4 rounded-t-sm"
-                    style={{ 
-                      height: `${height}%`,
-                      backgroundColor: i % 2 === 0 ? 'var(--primary)' : 'var(--secondary)'
-                    }}
-                  ></div>
-                ))}
-             </div>
-
-             <div className="relative z-10 mt-auto">
-              <h3 className="text-2xl font-bold mb-2 flex items-center gap-3">
-                <BarChart3 className="text-primary w-6 h-6" /> Secure & Reliable
-              </h3>
-              <p className="text-muted-foreground">
-                Built on enterprise-grade infrastructure with secure authentication and production-ready reliability.
+                Orchestrate complex searches across multiple sources simultaneously to maximize data yield.
               </p>
             </div>
           </motion.div>
@@ -259,8 +213,8 @@ export default function Home() {
             <div className="flex gap-6 text-sm text-muted-foreground">
               <Link href="/privacy" className="hover:text-foreground transition-colors">Privacy</Link>
               <Link href="/terms" className="hover:text-foreground transition-colors">Terms</Link>
-              <Link href="#" className="hover:text-foreground transition-colors">Twitter (X)</Link>
-              <Link href="#" className="hover:text-foreground transition-colors">LinkedIn</Link>
+              <Link href="https://x.com/IBMAZ_10" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors">Twitter (X)</Link>
+              <Link href="https://www.linkedin.com/in/mohammedibrahimaejaz/" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors">LinkedIn</Link>
             </div>
 
             <p className="text-sm text-muted-foreground">

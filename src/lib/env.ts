@@ -13,7 +13,7 @@ const envSchema = z.object({
   GEMINI_API_KEY: z.string().min(1).optional(),
   RESEND_WEBHOOK_SECRET: z.string().min(1).optional(),
   CEREBRAS_API_KEY: z.string().min(1).optional(),
-  SERPER_API_KEY: z.string().min(1).optional(),
+  SERPER_API_KEY: z.string().min(1, 'SERPER_API_KEY is required for the scraper to function'),
   // Plural comma-separated pools — used by KeyRotationLLMClient for multi-key rotation
   CEREBRAS_API_KEYS: z.string().min(1).optional(),
   GROQ_API_KEYS: z.string().min(1).optional(),
