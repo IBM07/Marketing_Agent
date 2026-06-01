@@ -78,3 +78,8 @@ check_problems/
 
 # CV
 cv_ibm/
+
+# Internal Project Planning
+post_mvp_prod/
+agent_rules.md
+implementation_plan.md.resolved

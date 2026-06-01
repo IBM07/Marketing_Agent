@@ -9,10 +9,6 @@ import { getRateLimiter } from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
 import prisma from "@/lib/prisma";
 
-// Extend Vercel function execution timeout to 60 seconds (300s with Fluid compute).
-// Without this, the scraping pipeline reliably hits the default 10s 504 Gateway Timeout.
-export const maxDuration = 60;
-
 /**
  * Ensures a user record exists in the database, creating one if needed.
  * Also ensures the user has at least one workspace.
@@ -109,22 +105,22 @@ export const POST = apiHandler(async (req: Request) => {
     for (const searchQuery of plan.searchQueries) {
       try {
         logger.info(`[AGENT_ROUTE] Running search query: "${searchQuery}"`);
-        const foundUrls = await searchWeb(searchQuery, 25); // Top 15 per query via Serper.dev
+        const foundUrls = await searchWeb(searchQuery, 100); // Pass all serper results through filters
         foundUrls.forEach(u => allUrls.add(u));
       } catch (searchErr) {
         logger.warn(`[AGENT_ROUTE] Search query failed, skipping: ${searchErr instanceof Error ? searchErr.message : String(searchErr)}`);
       }
     }
-    const targetUrls = Array.from(allUrls).slice(0, 100); // Cap at 50 total URLs (~50+ email yield)
+    const targetUrls = Array.from(allUrls).slice(0, 200); // Cap at 200 URLs for a larger lead pool
 
     logger.info(
       `[AGENT_ROUTE] Discovered ${targetUrls.length} unique target URLs: ${targetUrls.join(", ")}`
     );
 
     // 3. Scrape & Extract Phase — throttled to avoid rate limits
-    // Process in batches of 5 to prevent overwhelming API key quotas
-    const BATCH_SIZE = 5;
-    const BATCH_DELAY_MS = 1500;
+    // Process in batches of 10 to prevent overwhelming API key quotas
+    const BATCH_SIZE = 10;
+    const BATCH_DELAY_MS = 500;
     const extractionResults: PromiseSettledResult<Awaited<ReturnType<typeof extractLeadsFromUrl>>>[] = [];
 
     for (let i = 0; i < targetUrls.length; i += BATCH_SIZE) {
