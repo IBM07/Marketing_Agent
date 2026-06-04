@@ -7,6 +7,44 @@ import { logger } from "../logger";
 
 const llmClient = new KeyRotationLLMClient();
 
+// ---------------------------------------------------------------------------
+// Browserless fallback — fetches JS-rendered HTML via a headless Chromium
+// instance (Browserless v2: ghcr.io/browserless/chromium).
+// Returns raw HTML string on success, null if Browserless is not configured
+// or the request fails for any reason.
+// API reference: https://docs.browserless.io/rest-apis/content
+// ---------------------------------------------------------------------------
+async function fetchWithBrowserless(url: string): Promise<string | null> {
+  const browserlessUrl = process.env.BROWSERLESS_URL;
+  if (!browserlessUrl) return null;
+
+  try {
+    logger.info(`[BROWSERLESS] Attempting JS-render for ${url}`);
+    // Browserless v2 uses /chromium/content (v1 used /content)
+    const response = await fetch(`${browserlessUrl}/chromium/content`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        url,
+        waitForTimeout: 2000,  // v2 uses waitForTimeout, not waitFor
+      }),
+      signal: AbortSignal.timeout(15_000),
+    });
+
+    if (!response.ok) {
+      logger.warn(`[BROWSERLESS] HTTP ${response.status} for ${url} — skipping`);
+      return null;
+    }
+
+    const html = await response.text();
+    logger.info(`[BROWSERLESS] Successfully fetched ${url} (${html.length} bytes)`);
+    return html;
+  } catch (err) {
+    logger.warn(`[BROWSERLESS] Failed for ${url}:`, err instanceof Error ? err : new Error(String(err)));
+    return null;
+  }
+}
+
 /** HTML tags whose content is always noise — never contains lead data. */
 const NOISE_SELECTORS = [
   "script",
@@ -100,15 +138,39 @@ export async function extractLeadsFromUrl(
     // -----------------------------------------------------------------------
     // STEP 4: Filter markdown down to contact-signal lines only
     // -----------------------------------------------------------------------
-    const filteredText = extractContactSegments(rawMarkdown);
+    let filteredText = extractContactSegments(rawMarkdown);
 
     logger.info(
       `[EXTRACTION] ${url} — raw: ${rawMarkdown.length} chars → filtered: ${filteredText.length} chars`
     );
 
+    // -----------------------------------------------------------------------
+    // STEP 4b: Browserless fallback for JS-rendered SPAs
+    // Triggered when the standard fetch yields < 50 chars of contact-signal
+    // text — a strong indicator the page body was empty (React/Vue SPA).
+    // -----------------------------------------------------------------------
+    if (filteredText.length < 50) {
+      const browserlessHtml = await fetchWithBrowserless(url);
+      if (browserlessHtml) {
+        const $bl = cheerio.load(browserlessHtml);
+        $bl(NOISE_SELECTORS.join(", ")).remove();
+        const cleanedBrowserlessHtml = $bl("body").html() ?? $bl.html();
+        const browserlessMarkdown = NodeHtmlMarkdown.translate(cleanedBrowserlessHtml);
+        const browserlessFiltered = extractContactSegments(browserlessMarkdown);
+
+        logger.info(
+          `[BROWSERLESS] ${url} — raw: ${browserlessMarkdown.length} chars → filtered: ${browserlessFiltered.length} chars`
+        );
+
+        if (browserlessFiltered.length > filteredText.length) {
+          filteredText = browserlessFiltered;
+        }
+      }
+    }
+
     if (filteredText.length < 10) {
       logger.info(
-        `[EXTRACTION] Skipping ${url} — no contact signals found after filtering`
+        `[EXTRACTION] Skipping ${url} — no contact signals found after filtering (including Browserless fallback)`
       );
       return null;
     }

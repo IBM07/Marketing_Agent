@@ -18,6 +18,9 @@ const envSchema = z.object({
   CEREBRAS_API_KEYS: z.string().min(1).optional(),
   GROQ_API_KEYS: z.string().min(1).optional(),
   GEMINI_API_KEYS: z.string().min(1).optional(),
+  // [OPTIONAL] Browserless Chrome instance for JS-rendered page crawling
+  // Deploy: docker run -p 3000:3000 ghcr.io/browserless/chrome
+  BROWSERLESS_URL: z.string().url().optional(),
 });
 
 export const env = envSchema.parse(process.env);
