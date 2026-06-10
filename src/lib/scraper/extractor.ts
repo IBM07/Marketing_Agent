@@ -87,6 +87,7 @@ export async function extractLeadsFromUrl(
   data: LeadExtractionPayload;
   rawMarkdownLength: number;
   filteredLength: number;
+  filteredText: string; // FIX 2: expose the actual text so callers don't need to re-fetch
 } | null> {
   try {
     // -----------------------------------------------------------------------
@@ -132,8 +133,11 @@ export async function extractLeadsFromUrl(
 
     // -----------------------------------------------------------------------
     // STEP 3: Convert cleaned HTML → Markdown
+    // FIX 1: Safety fallback — if NOISE_SELECTORS stripped everything (< 100
+    // chars) fall back to the full raw HTML so SPA content is not lost.
     // -----------------------------------------------------------------------
-    const rawMarkdown = NodeHtmlMarkdown.translate(cleanedHtml);
+    const htmlToConvert = cleanedHtml.trim().length < 100 ? rawHtml : cleanedHtml;
+    const rawMarkdown = NodeHtmlMarkdown.translate(htmlToConvert);
 
     // -----------------------------------------------------------------------
     // STEP 4: Filter markdown down to contact-signal lines only
@@ -155,7 +159,11 @@ export async function extractLeadsFromUrl(
         const $bl = cheerio.load(browserlessHtml);
         $bl(NOISE_SELECTORS.join(", ")).remove();
         const cleanedBrowserlessHtml = $bl("body").html() ?? $bl.html();
-        const browserlessMarkdown = NodeHtmlMarkdown.translate(cleanedBrowserlessHtml);
+        // FIX 1 (Browserless path): same safety fallback as above
+        const blHtmlToConvert = cleanedBrowserlessHtml.trim().length < 100
+          ? browserlessHtml
+          : cleanedBrowserlessHtml;
+        const browserlessMarkdown = NodeHtmlMarkdown.translate(blHtmlToConvert);
         const browserlessFiltered = extractContactSegments(browserlessMarkdown);
 
         logger.info(
@@ -206,6 +214,7 @@ export async function extractLeadsFromUrl(
         },
         rawMarkdownLength: rawMarkdown.length,
         filteredLength: filteredText.length,
+        filteredText, // FIX 2: return actual text
       };
     }
 
@@ -256,6 +265,7 @@ export async function extractLeadsFromUrl(
       data: result,
       rawMarkdownLength: rawMarkdown.length,
       filteredLength: filteredText.length,
+      filteredText, // FIX 2: return actual text
     };
   } catch (error: unknown) {
     // AbortError = request timed out — expected for slow/blocked sites

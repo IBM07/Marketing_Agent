@@ -64,7 +64,7 @@ describe('Campaigns API', () => {
       vi.mocked(auth).mockResolvedValue({ userId: 'user_123' } as any);
       
       const { rateLimiter } = await import('@/lib/rate-limit');
-      vi.spyOn(rateLimiter, 'check').mockReturnValue({ success: false });
+      vi.spyOn(rateLimiter, 'check').mockReturnValue({ success: false, remaining: 0 });
 
       const request = new Request('http://localhost/api/campaigns', {
         method: 'POST',
@@ -79,7 +79,7 @@ describe('Campaigns API', () => {
     it('should return 400 if validation fails', async () => {
       vi.mocked(auth).mockResolvedValue({ userId: 'user_123' } as any);
       const { rateLimiter } = await import('@/lib/rate-limit');
-      vi.spyOn(rateLimiter, 'check').mockReturnValue({ success: true });
+      vi.spyOn(rateLimiter, 'check').mockReturnValue({ success: true, remaining: 4 });
       
       const mockUser = { id: 'user_123', workspaces: [{ id: 'workspace_123' }] };
       prismaMock.user.findUnique.mockResolvedValue(mockUser as any);
@@ -97,7 +97,7 @@ describe('Campaigns API', () => {
     it('should return 404 if user or workspace is not found', async () => {
       vi.mocked(auth).mockResolvedValue({ userId: 'user_123' } as any);
       const { rateLimiter } = await import('@/lib/rate-limit');
-      vi.spyOn(rateLimiter, 'check').mockReturnValue({ success: true });
+      vi.spyOn(rateLimiter, 'check').mockReturnValue({ success: true, remaining: 4 });
       
       prismaMock.user.findUnique.mockResolvedValue(null); // User not found
 
@@ -114,7 +114,7 @@ describe('Campaigns API', () => {
     it('should create a campaign and return 200', async () => {
       vi.mocked(auth).mockResolvedValue({ userId: 'user_123' } as any);
       const { rateLimiter } = await import('@/lib/rate-limit');
-      vi.spyOn(rateLimiter, 'check').mockReturnValue({ success: true });
+      vi.spyOn(rateLimiter, 'check').mockReturnValue({ success: true, remaining: 4 });
       
       const mockUser = { id: 'user_123', workspaces: [{ id: 'workspace_123' }] };
       prismaMock.user.findUnique.mockResolvedValue(mockUser as any);

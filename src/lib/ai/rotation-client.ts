@@ -52,6 +52,16 @@ export class KeyRotationLLMClient {
     return availableKeys[index];
   }
 
+  /**
+   * FIX 4: Truncate content before sending to Groq.
+   * Groq's llama-3.3-70b-versatile free tier has a ~6,000 token context limit.
+   * 10,000 chars ≈ 2,500 tokens, leaving enough room for the system prompt.
+   */
+  private truncateContent(content: string, maxChars = 10_000): string {
+    if (content.length <= maxChars) return content;
+    return content.slice(0, maxChars) + "\n\n[content truncated for token limit compliance]";
+  }
+
   async extractWithCerebras(
     prompt: string,
     content: string,
@@ -135,6 +145,8 @@ export class KeyRotationLLMClient {
       if (!activeKey) break;
 
       try {
+        // FIX 4: Truncate content before sending to prevent Groq 413 errors
+        const safeContent = this.truncateContent(content);
         const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
           method: "POST",
           headers: {
@@ -145,7 +157,7 @@ export class KeyRotationLLMClient {
             model: "llama-3.3-70b-versatile",
             messages: [
               { role: "system", content: prompt },
-              { role: "user", content: content },
+              { role: "user", content: safeContent },
             ],
             response_format: { type: "json_object" },
             temperature: 0.1,

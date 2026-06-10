@@ -5,6 +5,7 @@ import { UnauthorizedError, ValidationError, AppError } from "@/lib/errors";
 import { createAgentPlan } from "@/lib/agent/orchestrator";
 import { searchWeb } from "@/lib/scraper/search";
 import { extractLeadsFromUrl } from "@/lib/scraper/extractor";
+import { validateLead } from "@/lib/agent/validator";
 import { getRateLimiter } from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
 import prisma from "@/lib/prisma";
@@ -121,14 +122,31 @@ export const POST = apiHandler(async (req: Request) => {
     // Process in batches of 10 to prevent overwhelming API key quotas
     const BATCH_SIZE = 10;
     const BATCH_DELAY_MS = 500;
-    const extractionResults: PromiseSettledResult<Awaited<ReturnType<typeof extractLeadsFromUrl>>>[] = [];
+
+    // Store extraction results alongside the filtered text for later validation
+    interface ExtractionEntry {
+      result: Awaited<ReturnType<typeof extractLeadsFromUrl>>;
+      filteredText: string;
+    }
+    const extractionEntries: ExtractionEntry[] = [];
 
     for (let i = 0; i < targetUrls.length; i += BATCH_SIZE) {
       const batch = targetUrls.slice(i, i + BATCH_SIZE);
-      const batchResults = await Promise.allSettled(
+      const batchSettled = await Promise.allSettled(
         batch.map((url) => extractLeadsFromUrl(url, plan.targetCriteria))
       );
-      extractionResults.push(...batchResults);
+
+      for (const settled of batchSettled) {
+        if (settled.status === "fulfilled" && settled.value) {
+          extractionEntries.push({
+            result: settled.value,
+            // FIX 3 (part of FIX 2): use the actual filtered text returned by extractor
+            filteredText: settled.value.filteredText ?? "",
+          });
+        } else {
+          extractionEntries.push({ result: null, filteredText: "" });
+        }
+      }
 
       // Small delay between batches to let rate limits recover
       if (i + BATCH_SIZE < targetUrls.length) {
@@ -136,11 +154,20 @@ export const POST = apiHandler(async (req: Request) => {
       }
     }
 
-    logger.info(`[AGENT_ROUTE] Extraction complete: ${extractionResults.filter(r => r.status === 'fulfilled' && r.value).length}/${targetUrls.length} URLs yielded data`);
+    const extractionResults = extractionEntries.map((e) => ({
+      status: e.result ? "fulfilled" : "rejected",
+      value: e.result,
+    }));
+
+    logger.info(`[AGENT_ROUTE] Extraction complete: ${extractionEntries.filter(e => e.result).length}/${targetUrls.length} URLs yielded data`);
 
     // 4. Persist Leads to Database (upsert to avoid duplicates)
-    const savedLeads: { id: string; email: string; companyName: string }[] = [];
+    const savedLeads: { id: string; email: string; companyName: string; validated?: boolean }[] = [];
     const skippedLeads: string[] = [];
+
+    // Collect (leadId, sourceUrl, filteredText) tuples for batch validation
+    // FIX 3: Store the pre-filtered text so the background task doesn't need to re-fetch raw HTML
+    const validationQueue: { leadId: string; sourceUrl: string; filteredText: string }[] = [];
 
     for (let i = 0; i < extractionResults.length; i++) {
       const result = extractionResults[i];
@@ -197,6 +224,16 @@ export const POST = apiHandler(async (req: Request) => {
             email: lead.email,
             companyName: lead.companyName,
           });
+
+          // Queue for 3-agent validation (one entry per unique URL, not per contact)
+          if (!validationQueue.some((v) => v.sourceUrl === scrapedFromUrl)) {
+            // FIX 3: pass the pre-filtered text extracted earlier
+            validationQueue.push({
+              leadId: lead.id,
+              sourceUrl: scrapedFromUrl,
+              filteredText: extractionEntries[i]?.filteredText ?? "",
+            });
+          }
         } catch (dbError) {
           // P2002 = unique constraint violation — lead already exists (race condition)
           if (typeof dbError === 'object' && dbError !== null && 'code' in dbError && dbError.code === "P2002") {
@@ -208,8 +245,60 @@ export const POST = apiHandler(async (req: Request) => {
       }
     }
 
+    // ---------------------------------------------------------------------------
+    // 5. 3-Agent Validation (fire-and-forget, non-blocking)
+    // We kick off validation in the background so the response is not delayed.
+    // Validation fetches the live page text from scrapedFromUrl, then runs all
+    // 3 agents (criteria / intent / quality) with citation verification.
+    // ---------------------------------------------------------------------------
+    logger.info(`[AGENT_ROUTE] Queuing 3-agent validation for ${validationQueue.length} unique URLs`);
+
+    // Async IIFE — intentionally not awaited so the HTTP response returns fast
+    void (async () => {
+      for (const entry of validationQueue) {
+        try {
+          // FIX 3: Use the pre-filtered text already extracted during scraping.
+          // This avoids re-fetching raw HTML (20–100k chars) and sending it to
+          // LLMs, which was the root cause of Groq 413 and Gemini 429 errors.
+          const decision = await validateLead(
+            entry.filteredText,
+            entry.sourceUrl,
+            plan.targetCriteria
+          );
+
+          // FIX 6: If all AI providers were exhausted, don't treat as rejection
+          if ((decision as { crashed?: boolean }).crashed) {
+            logger.warn(
+              `[AGENT_ROUTE] All agents rate-limited for ${entry.sourceUrl} — skipping, not rejecting`
+            );
+            // Leave isEnriched=false; lead will stay pending for a future retry
+          } else if (decision.approved) {
+            await prisma.lead.updateMany({
+              where: { scrapedFromUrl: entry.sourceUrl, workspaceId: targetWorkspaceId },
+              data: { isEnriched: true, updatedAt: new Date() },
+            });
+            logger.info(
+              `[AGENT_ROUTE] 3-agent validation APPROVED ${entry.sourceUrl} — isEnriched=true set for all matching leads`
+            );
+          } else {
+            logger.info(
+              `[AGENT_ROUTE] 3-agent validation REJECTED ${entry.sourceUrl} — score: ${decision.finalScore.toFixed(2)}, votes: [${decision.votes.map((v) => `${v.agentId}:${v.passed}`).join(", ")}]`
+            );
+          }
+        } catch (valErr) {
+          logger.error(
+            `[AGENT_ROUTE] Validation background task failed for ${entry.sourceUrl}:`,
+            valErr
+          );
+        }
+        // FIX 7: 3-second cooldown between URLs to spread token consumption
+        // across Gemini's 250k/min free-tier quota (prevents quota exhaustion on URL 3+)
+        await new Promise(resolve => setTimeout(resolve, 3000));
+      }
+    })();
+
     logger.info(
-      `[AGENT_ROUTE] Saved ${savedLeads.length} leads, skipped ${skippedLeads.length}`
+      `[AGENT_ROUTE] Saved ${savedLeads.length} leads, skipped ${skippedLeads.length}. Validation queued for ${validationQueue.length} URLs.`
     );
 
     return NextResponse.json({
@@ -219,6 +308,7 @@ export const POST = apiHandler(async (req: Request) => {
       leadsExtracted: savedLeads.length,
       leadsSkipped: skippedLeads.length,
       leads: savedLeads,
+      validationQueued: validationQueue.length,
     });
   } catch (error: unknown) {
     if (error instanceof AppError) throw error;

@@ -33,9 +33,9 @@ interface RateLimitStore {
   [key: string]: { count: number; resetAt: number };
 }
 
-const store: RateLimitStore = {};
+export class RateLimiter {
+  private store: RateLimitStore = {};
 
-export const rateLimiter = {
   /**
    * @param key       Unique identifier (e.g., userId)
    * @param maxCalls  Maximum allowed calls within the window
@@ -47,10 +47,10 @@ export const rateLimiter = {
     windowMs: number
   ): { success: boolean; remaining: number } {
     const now = Date.now();
-    const record = store[key];
+    const record = this.store[key];
 
     if (!record || now > record.resetAt) {
-      store[key] = { count: 1, resetAt: now + windowMs };
+      this.store[key] = { count: 1, resetAt: now + windowMs };
       return { success: true, remaining: maxCalls - 1 };
     }
 
@@ -60,5 +60,8 @@ export const rateLimiter = {
 
     record.count += 1;
     return { success: true, remaining: maxCalls - record.count };
-  },
-};
+  }
+}
+
+// Singleton used by all route handlers — exported for mocking in tests
+export const rateLimiter = new RateLimiter();

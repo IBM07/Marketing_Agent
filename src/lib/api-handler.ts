@@ -3,10 +3,17 @@ import { AppError } from './errors';
 import { logger } from './logger';
 import { ZodError } from 'zod';
 
-export function apiHandler(handler: (req: Request, context: unknown) => Promise<NextResponse | void>) {
-  return async (req: Request, context: unknown) => {
+export function apiHandler(handler: (req: Request, context?: unknown) => Promise<NextResponse | void>) {
+  return async (req: Request, context?: unknown): Promise<NextResponse> => {
     try {
-      return await handler(req, context);
+      const result = await handler(req, context);
+      if (!(result instanceof NextResponse)) {
+        return NextResponse.json(
+          { error: 'Internal Server Error' },
+          { status: 500 }
+        );
+      }
+      return result;
     } catch (error) {
       if (error instanceof AppError) {
         return NextResponse.json(

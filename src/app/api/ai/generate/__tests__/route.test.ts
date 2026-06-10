@@ -47,7 +47,7 @@ describe('AI Generate API', () => {
     vi.mocked(auth).mockResolvedValue({ userId: 'user_123' } as any);
     
     const { rateLimiter } = await import('@/lib/rate-limit');
-    vi.spyOn(rateLimiter, 'check').mockReturnValue({ success: false });
+    vi.spyOn(rateLimiter, 'check').mockReturnValue({ success: false, remaining: 0 });
 
     const request = new Request('http://localhost/api/ai/generate', {
       method: 'POST',
@@ -62,7 +62,7 @@ describe('AI Generate API', () => {
   it('should return 400 if validation fails', async () => {
     vi.mocked(auth).mockResolvedValue({ userId: 'user_123' } as any);
     const { rateLimiter } = await import('@/lib/rate-limit');
-    vi.spyOn(rateLimiter, 'check').mockReturnValue({ success: true });
+    vi.spyOn(rateLimiter, 'check').mockReturnValue({ success: true, remaining: 4 });
 
     const request = new Request('http://localhost/api/ai/generate', {
       method: 'POST',
@@ -77,7 +77,7 @@ describe('AI Generate API', () => {
   it('should handle successful generation', async () => {
     vi.mocked(auth).mockResolvedValue({ userId: 'user_123' } as any);
     const { rateLimiter } = await import('@/lib/rate-limit');
-    vi.spyOn(rateLimiter, 'check').mockReturnValue({ success: true });
+    vi.spyOn(rateLimiter, 'check').mockReturnValue({ success: true, remaining: 4 });
 
     const request = new Request('http://localhost/api/ai/generate', {
       method: 'POST',
