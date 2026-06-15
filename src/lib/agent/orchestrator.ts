@@ -19,7 +19,7 @@ export async function createAgentPlan(prompt: string): Promise<AgentPlan> {
     Your job is to translate a user's natural language request for leads into a structured execution plan.
 
     CRITICAL RULES:
-    - Generate 10 to 15 diverse, NATURAL search queries that will surface direct business websites.
+    - Generate 5 to 7 diverse, NATURAL search queries that will surface direct business websites.
     - Write queries EXACTLY as a human would type them into Google. Do NOT use any of the following:
       * Quote operators like "contact us", "about us", "hire me", "email", "@", "@gmail.com"
       * Dorking terms: email, phone, contact, "@", hire me, get in touch, reach us
@@ -29,9 +29,15 @@ export async function createAgentPlan(prompt: string): Promise<AgentPlan> {
     - Focus query diversity on: industry + location, specific company type variations, regional synonyms, and professional title searches.
     - The targetCriteria must be specific: name the exact data points to extract (email, phone, company name, role/title of the contact).
 
+    REFUSE RULE — This is MANDATORY:
+    - If the user prompt describes something fictional, impossible, nonsensical, or not a real business category
+      (e.g. "unicorns on Mars", "time-traveling accountants", gibberish text), you MUST return:
+      { "searchQueries": [], "targetCriteria": "" }
+    - Do NOT invent search queries for fictional or joke prompts. Only generate queries for real, existing business types.
+
     Output exactly in this JSON format:
     {
-      "searchQueries": ["query1", "query2", "query3", "query4"],
+      "searchQueries": ["query1", "query2", "query3", "query4", "query5"],
       "targetCriteria": "Extract email addresses, phone numbers, company name, and owner/founder name."
     }
 
@@ -42,7 +48,8 @@ export async function createAgentPlan(prompt: string): Promise<AgentPlan> {
         "digital marketing agency Karachi",
         "digital marketing company Karachi Pakistan",
         "social media marketing firm Karachi",
-        "SEO agency Karachi Pakistan"
+        "SEO agency Karachi Pakistan",
+        "online marketing company Karachi"
       ],
       "targetCriteria": "Extract email addresses, phone numbers, company name, and founder/owner/manager name for digital marketing agencies in Karachi."
     }
@@ -54,9 +61,17 @@ export async function createAgentPlan(prompt: string): Promise<AgentPlan> {
         "web developer freelancer Lahore",
         "freelance web development Lahore Pakistan",
         "web designer Lahore portfolio",
-        "frontend developer Lahore hire"
+        "frontend developer Lahore hire",
+        "fullstack developer freelancer Lahore"
       ],
       "targetCriteria": "Extract email addresses, phone numbers, freelancer name, and role/title."
+    }
+
+    Example Input: "Find unicorns on Mars doing web design"
+    Example Output:
+    {
+      "searchQueries": [],
+      "targetCriteria": ""
     }
   `;
 
@@ -65,10 +80,10 @@ export async function createAgentPlan(prompt: string): Promise<AgentPlan> {
     const cerebrasResult = await llmClient.extractWithCerebras(systemPrompt, prompt);
     if (cerebrasResult) {
       const plan = (cerebrasResult as unknown) as AgentPlan;
-      if (plan.searchQueries && plan.searchQueries.length > 0) {
-        logger.info("[AGENT_ORCHESTRATOR] Plan created via Cerebras.");
-        return plan;
-      }
+      // Empty searchQueries is valid — the REFUSE RULE returns [] for nonsensical prompts.
+      // The discovery worker handles this gracefully by marking the job FAILED.
+      logger.info("[AGENT_ORCHESTRATOR] Plan created via Cerebras.");
+      return plan;
     }
 
     // Secondary fallback: Groq
@@ -76,9 +91,6 @@ export async function createAgentPlan(prompt: string): Promise<AgentPlan> {
     const groqResult = await llmClient.extractWithGroq(systemPrompt, prompt);
     if (groqResult) {
       const plan = (groqResult as unknown) as AgentPlan;
-      if (!plan.searchQueries || plan.searchQueries.length === 0) {
-        throw new Error("Groq returned an empty searchQueries array.");
-      }
       logger.info("[AGENT_ORCHESTRATOR] Plan created via Groq.");
       return plan;
     }
@@ -86,10 +98,11 @@ export async function createAgentPlan(prompt: string): Promise<AgentPlan> {
     // Final fallback: Gemini
     logger.warn("[AGENT_ORCHESTRATOR] Groq unavailable — falling back to Gemini.");
     const geminiResult = await llmClient.extractWithGemini(systemPrompt, prompt);
-    const fallbackPlan = (geminiResult as unknown) as AgentPlan;
-    if (!fallbackPlan.searchQueries || fallbackPlan.searchQueries.length === 0) {
-      throw new Error("Gemini fallback returned an empty searchQueries array.");
+    // Task 2.3: extractWithGemini now returns null on exhaustion instead of throwing.
+    if (!geminiResult) {
+      throw new Error("All LLM providers exhausted — unable to create agent plan.");
     }
+    const fallbackPlan = (geminiResult as unknown) as AgentPlan;
     logger.info("[AGENT_ORCHESTRATOR] Plan created via Gemini.");
     return fallbackPlan;
   } catch (error: unknown) {

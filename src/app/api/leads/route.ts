@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { auth, currentUser } from "@clerk/nextjs/server";
+import { auth } from "@clerk/nextjs/server";
 import { z } from "zod";
 import prisma from "@/lib/prisma";
 import { apiHandler } from "@/lib/api-handler";
@@ -8,6 +8,7 @@ import {
   NotFoundError,
   ValidationError,
 } from "@/lib/errors";
+import { getOrCreateWorkspace } from "@/lib/workspace";
 
 const CreateLeadSchema = z.object({
   email: z.string().email("A valid email is required"),
@@ -26,60 +27,24 @@ const UpdateLeadSchema = z.object({
   isEnriched: z.boolean().optional(),
 });
 
-async function getWorkspaceForUser(clerkUserId: string) {
-  let user = await prisma.user.findUnique({
-    where: { clerkId: clerkUserId },
-    include: { workspaces: true },
-  });
-
-  if (!user) {
-    const clerkUser = await currentUser();
-    if (!clerkUser) throw new UnauthorizedError();
-    const email =
-      clerkUser.emailAddresses[0]?.emailAddress ||
-      `${clerkUserId}@placeholder.com`;
-
-    user = await prisma.user.create({
-      data: {
-        clerkId: clerkUserId,
-        email,
-        workspaces: {
-          create: {
-            name: `${clerkUser.firstName || "My"} Workspace`,
-          },
-        },
-      },
-      include: { workspaces: true },
-    });
-  } else if (user.workspaces.length === 0) {
-    const clerkUser = await currentUser();
-    const newWorkspace = await prisma.workspace.create({
-      data: {
-        name: `${clerkUser?.firstName || "My"} Workspace`,
-        userId: user.id,
-      },
-    });
-    user.workspaces = [newWorkspace];
-  }
-
-  return user.workspaces[0];
-}
 
 // GET /api/leads — List all leads for user's workspace (paginated)
 export const GET = apiHandler(async (req: Request) => {
   const { userId } = await auth();
   if (!userId) throw new UnauthorizedError();
 
-  const workspace = await getWorkspaceForUser(userId);
+  const { workspace } = await getOrCreateWorkspace(userId);
 
   const { searchParams } = new URL(req.url);
   const page = Math.max(1, parseInt(searchParams.get("page") || "1"));
-  const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") || "50")));
+  const limit = Math.min(500, Math.max(1, parseInt(searchParams.get("limit") || "50")));
   const skip = (page - 1) * limit;
   const search = searchParams.get("search") || "";
+  const jobId = searchParams.get("jobId") || "";
 
   const where = {
     workspaceId: workspace.id,
+    ...(jobId ? { pipelineJobId: jobId } : {}),
     ...(search
       ? {
           OR: [
@@ -130,7 +95,7 @@ export const POST = apiHandler(async (req: Request) => {
   const { userId } = await auth();
   if (!userId) throw new UnauthorizedError();
 
-  const workspace = await getWorkspaceForUser(userId);
+  const { workspace } = await getOrCreateWorkspace(userId);
 
   const body = await req.json();
   const validation = CreateLeadSchema.safeParse(body);
@@ -174,7 +139,7 @@ export const PATCH = apiHandler(async (req: Request) => {
   const { userId } = await auth();
   if (!userId) throw new UnauthorizedError();
 
-  const workspace = await getWorkspaceForUser(userId);
+  const { workspace } = await getOrCreateWorkspace(userId);
 
   const { searchParams } = new URL(req.url);
   const leadId = searchParams.get("id");
@@ -202,7 +167,7 @@ export const DELETE = apiHandler(async (req: Request) => {
   const { userId } = await auth();
   if (!userId) throw new UnauthorizedError();
 
-  const workspace = await getWorkspaceForUser(userId);
+  const { workspace } = await getOrCreateWorkspace(userId);
 
   const { searchParams } = new URL(req.url);
   const leadId = searchParams.get("id");

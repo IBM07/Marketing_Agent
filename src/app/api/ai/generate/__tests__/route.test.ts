@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { POST } from '../route';
 import { auth } from '@clerk/nextjs/server';
 
@@ -6,29 +6,31 @@ vi.mock('@clerk/nextjs/server', () => ({
   auth: vi.fn(),
 }));
 
-vi.mock('groq-sdk', () => {
-  return {
-    Groq: class {
-      chat = {
-        completions: {
-          create: vi.fn().mockResolvedValue({
-            choices: [
-              {
-                message: {
-                  content: '{"subject": "Test Subject", "body": "Test Body"}',
-                },
-              },
-            ],
-          }),
-        },
-      };
-    },
-  };
-});
+// The /api/ai/generate route uses raw fetch() to call the Groq REST API,
+// not the groq-sdk. Mock the global fetch to prevent real network calls.
+const mockFetch = vi.fn();
+vi.stubGlobal('fetch', mockFetch);
 
 describe('AI Generate API', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Default: fetch succeeds with a valid Groq response shape.
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        choices: [
+          {
+            message: {
+              content: '{"subject": "Test Subject", "body": "Test Body"}',
+            },
+          },
+        ],
+      }),
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it('should return 401 if unauthorized', async () => {
@@ -90,4 +92,4 @@ describe('AI Generate API', () => {
     expect(data).toHaveProperty('subject', 'Test Subject');
     expect(data).toHaveProperty('body', 'Test Body');
   });
-});
+});

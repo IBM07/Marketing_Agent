@@ -87,6 +87,7 @@ export async function extractLeadsFromUrl(
   data: LeadExtractionPayload;
   rawMarkdownLength: number;
   filteredLength: number;
+  filteredText: string; // Task 2.2: Now part of the canonical return type
 } | null> {
   try {
     // -----------------------------------------------------------------------
@@ -206,6 +207,7 @@ export async function extractLeadsFromUrl(
         },
         rawMarkdownLength: rawMarkdown.length,
         filteredLength: filteredText.length,
+        filteredText, // Task 2.2: Include in regex return path
       };
     }
 
@@ -252,10 +254,18 @@ export async function extractLeadsFromUrl(
       result = await llmClient.extractWithGemini(structurePrompt, filteredText);
     }
 
+    // Task 2.3: extractWithGemini now returns null on exhaustion instead of throwing.
+    // If all three providers failed, skip this URL gracefully.
+    if (!result) {
+      logger.warn(`[EXTRACTION] All LLM providers exhausted for ${url} — skipping`);
+      return null;
+    }
+
     return {
       data: result,
       rawMarkdownLength: rawMarkdown.length,
       filteredLength: filteredText.length,
+      filteredText, // Task 2.2: Include in LLM return path
     };
   } catch (error: unknown) {
     // AbortError = request timed out — expected for slow/blocked sites

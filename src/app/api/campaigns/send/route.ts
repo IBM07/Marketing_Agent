@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { auth, currentUser } from "@clerk/nextjs/server";
+import { auth } from "@clerk/nextjs/server";
 import { z } from "zod";
+import sanitizeHtml from "sanitize-html";
 import prisma from "@/lib/prisma";
 import { rateLimiter } from "@/lib/rate-limit";
 import { apiHandler } from "@/lib/api-handler";
@@ -14,6 +15,7 @@ import {
 import { dispatchEmailBatch } from "@/lib/mail/dispatcher";
 import { DAILY_EMAIL_LIMIT } from "@/lib/mail/providerLimits";
 import { logger } from "@/lib/logger";
+import { getOrCreateWorkspace } from "@/lib/workspace";
 
 const SendEmailSchema = z.object({
   campaignId: z.string().uuid(),
@@ -25,33 +27,6 @@ const SendEmailSchema = z.object({
   content: z.string().min(1, "Content is required"),
 });
 
-async function getOrCreateUser(clerkUserId: string) {
-  let user = await prisma.user.findUnique({
-    where: { clerkId: clerkUserId },
-  });
-
-  if (!user) {
-    const clerkUser = await currentUser();
-    if (!clerkUser) throw new UnauthorizedError();
-    const email =
-      clerkUser.emailAddresses[0]?.emailAddress ||
-      `${clerkUserId}@placeholder.com`;
-
-    user = await prisma.user.create({
-      data: {
-        clerkId: clerkUserId,
-        email,
-        workspaces: {
-          create: {
-            name: `${clerkUser.firstName || "My"} Workspace`,
-          },
-        },
-      },
-    });
-  }
-
-  return user;
-}
 
 export const POST = apiHandler(async (req: Request) => {
   const { userId } = await auth();
@@ -73,7 +48,26 @@ export const POST = apiHandler(async (req: Request) => {
 
   const { campaignId, recipients, subject, content } = validation.data;
 
-  const dbUser = await getOrCreateUser(userId);
+  // ── Task 4.1: Sanitize HTML content before storage and sending ──────────
+  // Prevents XSS and CSS-injection attacks from being forwarded to recipients.
+  // Allows all standard email formatting tags; strips scripts and event attrs.
+  const safeContent = sanitizeHtml(content, {
+    allowedTags: sanitizeHtml.defaults.allowedTags.concat([
+      "br", "p", "strong", "em", "a", "ul", "ol", "li",
+      "h1", "h2", "h3", "span", "div", "img",
+    ]),
+    allowedAttributes: {
+      ...sanitizeHtml.defaults.allowedAttributes,
+      "a": ["href", "target", "rel"],
+      "img": ["src", "alt", "width", "height"],
+      "span": ["style"],
+      "p": ["style"],
+      "div": ["style"],
+    },
+    allowedSchemes: ["https", "mailto"],
+  });
+
+  const { user: dbUser } = await getOrCreateWorkspace(userId);
 
   const campaign = await prisma.campaign.findUnique({
     where: { id: campaignId },
@@ -160,7 +154,7 @@ export const POST = apiHandler(async (req: Request) => {
       recipientsToSend.map((recipient) => ({
         recipient,
         subject,
-        htmlContent: content.replace(/\n/g, "<br>"),
+        htmlContent: safeContent.replace(/\n/g, "<br>"),
       }))
     );
   } else {
@@ -172,7 +166,12 @@ export const POST = apiHandler(async (req: Request) => {
       const fromEmail = process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
 
       if (fromEmail.includes("resend.dev") && process.env.NODE_ENV === "production") {
-        logger.warn("[WARNING] Using sandbox email in production. Deliverability may be affected.");
+        throw new ValidationError(
+          "RESEND_FROM_EMAIL is set to the Resend sandbox address (onboarding@resend.dev). " +
+          "Emails sent from this address in production will be silently dropped or flagged as spam. " +
+          "Set RESEND_FROM_EMAIL to a verified custom domain sender (e.g. noreply@yourdomain.com).",
+          "SANDBOX_EMAIL_IN_PRODUCTION"
+        );
       }
 
       const { data, error } = await resend.batch.send(
@@ -180,7 +179,7 @@ export const POST = apiHandler(async (req: Request) => {
           from: fromEmail,
           to: [recipient],
           subject,
-          html: content.replace(/\n/g, "<br>"),
+          html: safeContent.replace(/\n/g, "<br>"),
         }))
       );
 
@@ -219,7 +218,7 @@ export const POST = apiHandler(async (req: Request) => {
           leadId: lead?.id || null,
           recipient: result.recipient,
           subject,
-          content,
+          content: safeContent,
           status,
           resendId: result.success && isResendSend ? result.messageId ?? null : null,
           smtpMessageId: result.success && isSmtpSend ? result.messageId ?? null : null,
@@ -240,14 +239,45 @@ export const POST = apiHandler(async (req: Request) => {
     (r) => r.status === "fulfilled" && r.value.status === "SENT"
   ).length;
 
+  // ── Step 2b: Populate CampaignLead join table for ALL recipients ───────
+  // Fetch Lead IDs for every recipient in this send (both sent and skipped).
+  const allLeadsForCampaign = await prisma.lead.findMany({
+    where: {
+      email: { in: filteredRecipients.map(r => r.trim().toLowerCase()) },
+      workspace: { userId: dbUser.id },
+    },
+    select: { id: true },
+  });
+
+  if (allLeadsForCampaign.length > 0) {
+    await prisma.campaignLead.createMany({
+      skipDuplicates: true,
+      data: allLeadsForCampaign.map(lead => ({
+        campaignId,
+        leadId: lead.id,
+      })),
+    });
+  }
+
   // ── Step 3: Persist QUOTA_EXCEEDED logs for skipped recipients ─────────
   if (recipientsSkipped.length > 0) {
+    // Resolve leadId for each skipped recipient via a single batched query.
+    const skippedLeads = await prisma.lead.findMany({
+      where: {
+        email: { in: recipientsSkipped.map(r => r.trim().toLowerCase()) },
+        workspace: { userId: dbUser.id },
+      },
+      select: { id: true, email: true },
+    });
+    const skippedLeadMap = new Map(skippedLeads.map(l => [l.email.toLowerCase(), l.id]));
+
     await prisma.emailLog.createMany({
       data: recipientsSkipped.map(recipient => ({
         campaignId,
+        leadId: skippedLeadMap.get(recipient.trim().toLowerCase()) ?? null,
         recipient,
         subject,
-        content,
+        content: safeContent,
         status: "QUOTA_EXCEEDED" as const,
         sentAt: null,
       })),

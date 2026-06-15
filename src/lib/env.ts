@@ -21,6 +21,10 @@ const envSchema = z.object({
   // [OPTIONAL] Browserless Chrome instance for JS-rendered page crawling
   // Deploy: docker run -p 3000:3000 ghcr.io/browserless/chrome
   BROWSERLESS_URL: z.string().url().optional(),
+  // [REQUIRED for async queue] Redis connection URL for BullMQ
+  // Local dev: redis://localhost:6379
+  // Production: redis://:<password>@<host>:6379 or a Upstash TLS URL
+  REDIS_URL: z.string().min(1),
 });
 
 export const env = envSchema.parse(process.env);

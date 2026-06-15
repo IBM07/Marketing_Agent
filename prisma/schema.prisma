@@ -14,6 +14,15 @@ enum CampaignStatus {
   PARTIAL
 }
 
+// Task 2.1: Strongly-typed status field — prevents typos like "RUNING" or "Done"
+// at both compile-time (Prisma codegen) and DB-level (PostgreSQL constraint).
+enum PipelineJobStatus {
+  QUEUED
+  RUNNING
+  DONE
+  FAILED
+}
+
 enum EmailStatus {
   PENDING
   SENT
@@ -51,6 +60,7 @@ model Workspace {
   campaigns    Campaign[]
   leads        Lead[]
   unsubscribes Unsubscribe[]
+  pipelineJobs PipelineJob[]
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 }
@@ -66,6 +76,8 @@ model Lead {
   isEnriched     Boolean        @default(false)
   workspaceId    String
   workspace      Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  pipelineJobId  String?
+  pipelineJob    PipelineJob?   @relation(fields: [pipelineJobId], references: [id], onDelete: SetNull)
   campaignLeads  CampaignLead[]
   emailLogs      EmailLog[]
   createdAt      DateTime       @default(now())
@@ -73,6 +85,7 @@ model Lead {
 
   @@unique([workspaceId, email])
   @@index([workspaceId, createdAt(sort: Desc)])
+  @@index([pipelineJobId])
 }
 
 model Campaign {
@@ -138,4 +151,22 @@ model Unsubscribe {
 
   @@unique([workspaceId, email])
   @@index([workspaceId, email])
+}
+
+model PipelineJob {
+  id            String    @id @default(uuid())
+  workspaceId   String
+  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  prompt        String
+  status        PipelineJobStatus @default(QUEUED)
+  totalUrls     Int       @default(0)
+  processedUrls Int       @default(0)
+  leadsFound    Int       @default(0)
+  pendingValidations Int  @default(0)
+  errorMessage  String?
+  leads         Lead[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([workspaceId, createdAt(sort: Desc)])
 }

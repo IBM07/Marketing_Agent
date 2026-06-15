@@ -28,13 +28,22 @@ export default function NewCampaign() {
   // Scraper-first state
   const [scrapePrompt, setScrapePrompt] = useState("");
   const [isScraping, setIsScraping] = useState(false);
-  const [scrapePhase, setScrapePhase] = useState(0);
   const [scrapeResult, setScrapeResult] = useState<{
     leadsExtracted: number;
     companySamples: string[];
   } | null>(null);
   const [scrapeError, setScrapeError] = useState<string | null>(null);
   const [leadMode, setLeadMode] = useState<"scrape" | "upload">("scrape");
+
+  // Async job tracking state
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const [jobProgress, setJobProgress] = useState<{
+    status: string;
+    totalUrls: number;
+    processedUrls: number;
+    leadsFound: number;
+    progressPct: number;
+  } | null>(null);
 
   // Add robust keyboard navigation
   useEffect(() => {
@@ -106,25 +115,16 @@ export default function NewCampaign() {
   };
 
 
-  const SCRAPE_PHASES = [
-    "🔍 Searching the web...",
-    "🕷  Scraping websites...",
-    "🧠 Extracting contacts...",
-    "✓  Done!"
-  ];
-
   const handleScrape = async () => {
     if (!scrapePrompt.trim()) return;
     setIsScraping(true);
     setScrapeError(null);
     setScrapeResult(null);
-    setScrapePhase(0);
-
-    const interval = setInterval(() =>
-      setScrapePhase(p => Math.min(p + 1, 2)), 3000
-    );
+    setActiveJobId(null);
+    setJobProgress(null);
 
     try {
+      // Step 1: Submit the job — returns immediately with { jobId }
       const res = await fetch("/api/agent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -132,26 +132,66 @@ export default function NewCampaign() {
       });
       const data = await res.json();
 
-      clearInterval(interval);
-      setScrapePhase(3);
-
-      if (!res.ok || !data.success) {
-        setScrapeError(data.error || "Scraping failed. Try a different prompt.");
+      if (!res.ok || !data.success || !data.jobId) {
+        setScrapeError(data.error || "Failed to start scraping job. Try again.");
+        setIsScraping(false);
         return;
       }
 
-      if (data.leadsExtracted === 0) {
-        setScrapeError("No leads found. Try broadening your description.");
+      const jobId: string = data.jobId;
+      setActiveJobId(jobId);
+
+      // Step 2: Poll /api/agent/status every 3 seconds until DONE or FAILED
+      await new Promise<void>((resolve) => {
+        const poll = setInterval(async () => {
+          try {
+            const statusRes = await fetch(`/api/agent/status?jobId=${jobId}`);
+            if (!statusRes.ok) return; // transient error — keep polling
+            const status = await statusRes.json();
+
+            setJobProgress({
+              status: status.status,
+              totalUrls: status.totalUrls,
+              processedUrls: status.processedUrls,
+              leadsFound: status.leadsFound,
+              progressPct: status.progressPct,
+            });
+
+            if (status.status === "DONE" || status.status === "FAILED") {
+              clearInterval(poll);
+              resolve();
+            }
+          } catch {
+            // network hiccup — keep polling
+          }
+        }, 3000);
+      });
+
+      // Step 3: Evaluate final state
+      const finalStatus = await fetch(`/api/agent/status?jobId=${jobId}`).then(r => r.json());
+
+      if (finalStatus.status === "FAILED") {
+        setScrapeError(finalStatus.errorMessage || "Pipeline job failed. Try again.");
         return;
       }
 
-      setRecipientsList(data.leads.map((l: { email: string }) => l.email));
+      if (finalStatus.leadsFound === 0) {
+        setScrapeError("No leads found. Try broadening your search description.");
+        return;
+      }
+
+      // Fetch the actual lead emails from the leads API for this workspace
+      // so we can populate recipientsList for the campaign
+      const leadsRes = await fetch(`/api/leads?jobId=${jobId}&limit=500`);
+      const leadsData = await leadsRes.json();
+      const leads: { email: string; companyName: string }[] = leadsData.data || leadsData || [];
+
+      setRecipientsList(leads.map((l) => l.email));
       setScrapeResult({
-        leadsExtracted: data.leadsExtracted,
-        companySamples: data.leads.slice(0, 3).map((l: { companyName: string }) => l.companyName),
+        leadsExtracted: finalStatus.leadsFound,
+        companySamples: leads.slice(0, 3).map((l) => l.companyName),
       });
     } catch {
-      clearInterval(interval);
       setScrapeError("Network error. Please try again.");
     } finally {
       setIsScraping(false);
@@ -184,6 +224,11 @@ export default function NewCampaign() {
   };
 
   const handleActivate = async () => {
+    // Client-side guard: prevent sending if name was lost (e.g. by Fast Refresh)
+    if (!formData.name.trim()) {
+      alert("Campaign name is required. Please go back to Step 2 and enter a name.");
+      return;
+    }
     setIsSaving(true);
     try {
       const campRes = await fetch("/api/campaigns", {
@@ -195,7 +240,10 @@ export default function NewCampaign() {
           targetAudience: formData.niche,
         }),
       });
-      if (!campRes.ok) throw new Error("Failed to save campaign");
+      if (!campRes.ok) {
+        const errBody = await campRes.json().catch(() => ({}));
+        throw new Error(errBody.error || `Server returned ${campRes.status}`);
+      }
       const campaign = await campRes.json();
 
       if (recipientsList.length > 0) {
@@ -234,7 +282,8 @@ export default function NewCampaign() {
       }, 2000);
     } catch (e) {
       console.error(e);
-      alert("Error saving campaign");
+      const msg = e instanceof Error ? e.message : "Unknown error";
+      alert(`Error saving campaign: ${msg}`);
       setIsSaving(false);
     }
   };
@@ -347,14 +396,61 @@ export default function NewCampaign() {
                           className="w-full bg-background/50 border border-card-border rounded-md px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all text-sm font-mono resize-none"
                         />
 
-                        {/* Phase progress */}
+                        {/* Async job progress panel */}
                         {isScraping && (
-                          <div className="p-4 rounded-lg border border-card-border/50 bg-card/10 space-y-2">
-                            {SCRAPE_PHASES.map((msg, i) => (
-                              <div key={i} className={`text-sm font-mono transition-opacity duration-300 ${i <= scrapePhase ? "opacity-100 text-foreground" : "opacity-30 text-muted-foreground"}`}>
-                                {msg}
+                          <div className="p-4 rounded-lg border border-card-border/50 bg-card/10 space-y-4">
+                            {!activeJobId ? (
+                              <div className="flex items-center gap-3 text-sm font-mono text-muted-foreground">
+                                <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                                <span>Submitting job to pipeline...</span>
                               </div>
-                            ))}
+                            ) : (
+                              <>
+                                <div className="flex items-center justify-between text-xs font-mono text-muted-foreground">
+                                  <div className="flex items-center gap-2">
+                                    {jobProgress?.status === "RUNNING" || jobProgress?.status === "QUEUED" ? (
+                                      <Loader2 className="w-3 h-3 animate-spin text-primary" />
+                                    ) : (
+                                      <CheckCircle2 className="w-3 h-3 text-green-500" />
+                                    )}
+                                    <span className="uppercase tracking-widest">
+                                      {jobProgress?.status === "QUEUED" ? "Queued — waiting for worker..." :
+                                       jobProgress?.status === "RUNNING" ? "Pipeline running..." :
+                                       jobProgress?.status === "DONE" ? "Complete!" : "Processing..."}
+                                    </span>
+                                  </div>
+                                  <span className="tabular-nums">
+                                    {jobProgress?.processedUrls ?? 0} / {jobProgress?.totalUrls ?? "?"} URLs
+                                    {(jobProgress?.leadsFound ?? 0) > 0 && (
+                                      <span className="ml-2 text-green-400">· {jobProgress?.leadsFound} leads</span>
+                                    )}
+                                  </span>
+                                </div>
+
+                                {/* Live progress bar */}
+                                <div className="w-full h-2 bg-card-border/50 rounded-full overflow-hidden">
+                                  <motion.div
+                                    className="h-full bg-gradient-to-r from-primary to-secondary rounded-full"
+                                    initial={{ width: "0%" }}
+                                    animate={{ width: `${jobProgress?.progressPct ?? 0}%` }}
+                                    transition={{ duration: 0.8, ease: "easeOut" }}
+                                  />
+                                </div>
+
+                                <div className="grid grid-cols-3 gap-3 pt-1">
+                                  {[
+                                    { label: "🔍 Discovered", value: jobProgress?.totalUrls ?? 0, unit: "URLs" },
+                                    { label: "🕷 Scraped", value: jobProgress?.processedUrls ?? 0, unit: "pages" },
+                                    { label: "✉️ Leads Found", value: jobProgress?.leadsFound ?? 0, unit: "contacts" },
+                                  ].map((stat) => (
+                                    <div key={stat.label} className="text-center p-2 rounded-md bg-background/30 border border-card-border/30">
+                                      <div className="text-lg font-bold tabular-nums text-foreground">{stat.value}</div>
+                                      <div className="text-[10px] text-muted-foreground font-mono">{stat.label}</div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </>
+                            )}
                           </div>
                         )}
 

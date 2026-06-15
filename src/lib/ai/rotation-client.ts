@@ -179,14 +179,18 @@ export class KeyRotationLLMClient {
     return null;
   }
 
+  // Task 2.3: Return type changed from Promise<LeadExtractionPayload> to Promise<LeadExtractionPayload | null>.
+  // All three providers now share the same null-return contract on exhaustion.
+  // Callers no longer need asymmetric try/catch just for Gemini.
   async extractWithGemini(
     prompt: string, 
     content: string, 
     userCustomKey?: string
-  ): Promise<LeadExtractionPayload> {
+  ): Promise<LeadExtractionPayload | null> {
     const keysToUse = userCustomKey ? [userCustomKey.trim()] : [...this.geminiKeys];
     if (keysToUse.length === 0) {
-      throw new Error("No Gemini keys configured.");
+      logger.warn("[AI_ROTATION] No Gemini keys configured — skipping.");
+      return null;
     }
 
     const exhaustedKeys = new Set<string>();
@@ -223,6 +227,8 @@ export class KeyRotationLLMClient {
       }
     }
 
-    throw new Error("Gemini fallback pool exhausted without successful data extraction.");
+    // Task 2.3: Return null instead of throwing so callers use uniform null-guards.
+    logger.warn("[AI_ROTATION] Gemini fallback pool exhausted — returning null.");
+    return null;
   }
 }

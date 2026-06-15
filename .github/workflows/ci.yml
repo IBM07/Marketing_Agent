@@ -34,6 +34,10 @@ jobs:
           RESEND_API_KEY: re_dummy
           CLERK_WEBHOOK_SECRET: whsec_dummy
           RESEND_FROM_EMAIL: "test@example.com"
+          ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
+          CRON_SECRET: "0000000000000000000000000000000000000000000000000000000000000000"
+          SERPER_API_KEY: "dummy_serper_key"
+          REDIS_URL: "redis://localhost:6379"
 
   test:
     runs-on: ubuntu-latest
@@ -48,6 +52,20 @@ jobs:
         
       - name: Generate Prisma client
         run: npx prisma generate
-        
+        env:
+          DATABASE_URL: "postgresql://dummy:dummy@localhost:5432/dummy"
+          
       - name: Run unit & component tests
         run: npm run test
+        env:
+          DATABASE_URL: "postgresql://dummy:dummy@localhost:5432/dummy"
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_valid
+          CLERK_SECRET_KEY: sk_test_valid
+          GROQ_API_KEY: gsk_dummy
+          RESEND_API_KEY: re_dummy
+          CLERK_WEBHOOK_SECRET: whsec_dummy
+          RESEND_FROM_EMAIL: "test@example.com"
+          ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
+          CRON_SECRET: "0000000000000000000000000000000000000000000000000000000000000000"
+          SERPER_API_KEY: "dummy_serper_key"
+          REDIS_URL: "redis://localhost:6379"

@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
-import { auth, currentUser } from "@clerk/nextjs/server";
+import { auth } from "@clerk/nextjs/server";
 import { z } from "zod";
 import prisma from "@/lib/prisma";
 import { rateLimiter } from "@/lib/rate-limit";
 import { apiHandler } from "@/lib/api-handler";
 import { UnauthorizedError, NotFoundError, RateLimitError, ValidationError } from "@/lib/errors";
+import { getOrCreateWorkspace } from "@/lib/workspace";
 
 const CampaignSchema = z.object({
   name: z.string().min(1, "Name is required").max(100, "Name must be less than 100 characters"),
@@ -20,42 +21,6 @@ const UpdateCampaignSchema = z.object({
   targetAudience: z.string().max(2000).optional(),
 });
 
-async function getOrCreateWorkspace(userId: string) {
-  let user = await prisma.user.findUnique({
-    where: { clerkId: userId },
-    include: { workspaces: true },
-  });
-
-  if (!user) {
-    const clerkUser = await currentUser();
-    if (!clerkUser) throw new UnauthorizedError();
-    const email = clerkUser.emailAddresses[0]?.emailAddress || `${userId}@placeholder.com`;
-    
-    user = await prisma.user.create({
-      data: {
-        clerkId: userId,
-        email,
-        workspaces: {
-          create: {
-            name: `${clerkUser.firstName || 'My'} Workspace`,
-          }
-        }
-      },
-      include: { workspaces: true }
-    });
-  } else if (user.workspaces.length === 0) {
-    const clerkUser = await currentUser();
-    const newWorkspace = await prisma.workspace.create({
-      data: {
-        name: `${clerkUser?.firstName || 'My'} Workspace`,
-        userId: user.id,
-      }
-    });
-    user.workspaces = [newWorkspace];
-  }
-
-  return user.workspaces[0];
-}
 
 export const GET = apiHandler(async (req: Request) => {
   const { userId } = await auth();
@@ -64,7 +29,7 @@ export const GET = apiHandler(async (req: Request) => {
     throw new UnauthorizedError();
   }
 
-  const workspace = await getOrCreateWorkspace(userId);
+  const { workspace } = await getOrCreateWorkspace(userId);
 
   const { searchParams } = new URL(req.url);
   const page = Math.max(1, parseInt(searchParams.get("page") || "1"));
@@ -111,7 +76,7 @@ export const POST = apiHandler(async (req: Request) => {
     throw new RateLimitError();
   }
 
-  const workspace = await getOrCreateWorkspace(userId);
+  const { workspace } = await getOrCreateWorkspace(userId);
 
   const body = await req.json();
   const validation = CampaignSchema.safeParse(body);
@@ -141,7 +106,7 @@ export const PATCH = apiHandler(async (req: Request) => {
     throw new UnauthorizedError();
   }
 
-  const workspace = await getOrCreateWorkspace(userId);
+  const { workspace } = await getOrCreateWorkspace(userId);
 
   const body = await req.json();
   const validation = UpdateCampaignSchema.safeParse(body);
@@ -175,7 +140,7 @@ export const DELETE = apiHandler(async (req: Request) => {
     throw new UnauthorizedError();
   }
 
-  const workspace = await getOrCreateWorkspace(userId);
+  const { workspace } = await getOrCreateWorkspace(userId);
 
   const { searchParams } = new URL(req.url);
   const id = searchParams.get("id");

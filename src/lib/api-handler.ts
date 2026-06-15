@@ -3,8 +3,8 @@ import { AppError } from './errors';
 import { logger } from './logger';
 import { ZodError } from 'zod';
 
-export function apiHandler(handler: (req: Request, context: unknown) => Promise<NextResponse | void>) {
-  return async (req: Request, context: unknown) => {
+export function apiHandler<T extends Request>(handler: (req: T, context: unknown) => Promise<NextResponse | void>) {
+  return async (req: T, context: unknown) => {
     try {
       return await handler(req, context);
     } catch (error) {
@@ -24,6 +24,9 @@ export function apiHandler(handler: (req: Request, context: unknown) => Promise<
 
       logger.error('[UNHANDLED]', error);
 
+      // SECURITY: Never expose internal error details to the client.
+      // The `error` object is logged server-side only. Do NOT add error.message
+      // or stack traces to the JSON response — they leak implementation details.
       return NextResponse.json(
         { error: 'Internal Server Error' },
         { status: 500 }

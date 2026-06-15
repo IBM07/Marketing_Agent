@@ -1,0 +1,76 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Dockerfile.worker
+#
+# Standalone BullMQ worker image.
+#
+# This runs ONLY the async pipeline workers (Discovery → Extraction → Validation).
+# It does NOT serve any HTTP traffic.
+#
+# Deploy as a separate DigitalOcean App Platform "Worker" component that points
+# to this Dockerfile, so the workers can scale independently from the web server.
+#
+# Build:
+#   docker build -f Dockerfile.worker -t hyperdrive-worker .
+#
+# Run:
+#   docker run --env-file .env hyperdrive-worker
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Stage 1: Install dependencies ────────────────────────────────────────────
+FROM node:20-alpine AS deps
+RUN apk add --no-cache libc6-compat openssl
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm ci --frozen-lockfile
+
+# ── Stage 2: Generate Prisma client ──────────────────────────────────────────
+FROM node:20-alpine AS prisma
+RUN apk add --no-cache openssl
+WORKDIR /app
+
+# DATABASE_URL is required by prisma generate at build time.
+ARG DATABASE_URL
+ENV DATABASE_URL=${DATABASE_URL}
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY prisma ./prisma
+COPY package.json ./
+
+RUN npx prisma generate
+
+# ── Stage 3: Production worker runner ────────────────────────────────────────
+FROM node:20-alpine AS runner
+RUN apk add --no-cache openssl curl
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# Create a non-root user for security.
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 workerjs
+
+# Copy node_modules (includes tsx, bullmq, prisma client, etc.)
+COPY --from=prisma /app/node_modules ./node_modules
+COPY --from=prisma /app/prisma ./prisma
+
+# Copy source code needed by the workers.
+COPY src/lib ./src/lib
+COPY src/app/api/agent ./src/app/api/agent
+COPY tsconfig.json ./
+COPY package.json ./
+
+# Set correct ownership.
+RUN chown -R workerjs:nodejs /app
+
+USER workerjs
+
+# Health check: verify the worker process is still alive by checking if the
+# Node process is running. Workers don't serve HTTP so we use a process check.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+  CMD pgrep -f "worker-server" || exit 1
+
+# Start the BullMQ worker server using tsx (TypeScript execution engine).
+# tsx is a devDependency so it's available in node_modules/.bin.
+CMD ["node_modules/.bin/tsx", "src/lib/queue/worker-server.ts"]

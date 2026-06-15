@@ -39,8 +39,14 @@ function isFilteredUrl(foundUrl: string): boolean {
   // Block Cloudflare email-protection redirect pages (no real content)
   const isEmailProtection = /\/cdn-cgi\/l\/email-protection/i.test(foundUrl);
 
+  // Block content-only domains that will never contain B2B lead contact info.
+  // These show up in Serper results but yield zero emails — just burned API credits.
+  // Evidence: nasa.gov, youtube.com, podcasts.apple.com all appeared in logs for
+  // nonsense prompts and legitimate prompts alike, producing zero leads every time.
+  const isContentOnly = /(youtube\.com|youtu\.be|vimeo\.com|dailymotion\.com|podcasts\.apple\.com|spotify\.com|soundcloud\.com|nasa\.gov|\.gov\/|\.mil\/|\.edu\/|arxiv\.org|nature\.com|sciencedirect\.com|springer\.com|wiley\.com|ncbi\.nlm\.nih\.gov|pubmed\.ncbi|researchgate\.net|academia\.edu|bbc\.com|bbc\.co\.uk|cnn\.com|nytimes\.com|washingtonpost\.com|theguardian\.com|reuters\.com|apnews\.com|forbes\.com|bloomberg\.com|wsj\.com|ft\.com|cnbc\.com|businessinsider\.com|vice\.com|buzzfeed\.com|pinterest\.com|tiktok\.com|snapchat\.com|whatsapp\.com|telegram\.org|discord\.com|slack\.com|zoom\.us|teams\.microsoft\.com|docs\.google\.com|drive\.google\.com|github\.com|gitlab\.com|bitbucket\.org|stackoverflow\.com|stackexchange\.com|archive\.org|web\.archive\.org)/i.test(foundUrl);
+
   return isAggregator || isJobBoard || isHireMarketplace || isTraining ||
-    isMarketplace || isNonContactPath || isAsset || isSearchPage || isCdn || isEmailProtection;
+    isMarketplace || isNonContactPath || isAsset || isSearchPage || isCdn || isEmailProtection || isContentOnly;
 }
 
 /**

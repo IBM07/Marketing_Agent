@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
-import { auth, currentUser } from "@clerk/nextjs/server";
+import { auth } from "@clerk/nextjs/server";
 import { z } from "zod";
 import prisma from "@/lib/prisma";
 import { apiHandler } from "@/lib/api-handler";
 import { UnauthorizedError, ValidationError } from "@/lib/errors";
 import { encrypt } from "@/lib/security";
 import { DAILY_EMAIL_LIMIT } from "@/lib/mail/providerLimits";
+import { getOrCreateWorkspace } from "@/lib/workspace";
 
 const MASK = "••••••••";
 
@@ -19,40 +20,13 @@ const SettingsSchema = z.object({
   senderName: z.string().optional().nullable(),
 });
 
-async function getOrCreateUser(clerkUserId: string) {
-  let user = await prisma.user.findUnique({
-    where: { clerkId: clerkUserId },
-  });
-
-  if (!user) {
-    const clerkUser = await currentUser();
-    if (!clerkUser) throw new UnauthorizedError();
-    const email =
-      clerkUser.emailAddresses[0]?.emailAddress ||
-      `${clerkUserId}@placeholder.com`;
-
-    user = await prisma.user.create({
-      data: {
-        clerkId: clerkUserId,
-        email,
-        workspaces: {
-          create: {
-            name: `${clerkUser.firstName || "My"} Workspace`,
-          },
-        },
-      },
-    });
-  }
-
-  return user;
-}
 
 // ── GET — Load settings (masked secrets) ──────────────────────────────────
 export const GET = apiHandler(async () => {
   const { userId } = await auth();
   if (!userId) throw new UnauthorizedError();
 
-  const user = await getOrCreateUser(userId);
+  const { user } = await getOrCreateWorkspace(userId);
 
   // Calculate today's quota
   const startOfToday = new Date();
@@ -85,7 +59,7 @@ export const POST = apiHandler(async (req: Request) => {
   const { userId } = await auth();
   if (!userId) throw new UnauthorizedError();
 
-  const user = await getOrCreateUser(userId);
+  const { user } = await getOrCreateWorkspace(userId);
 
   const body = await req.json();
   const validation = SettingsSchema.safeParse(body);

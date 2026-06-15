@@ -58,7 +58,14 @@ export async function dispatchEmail(
 
     // Prefer Resend API Key if provided
     if (config.resendApiKey) {
-      const decryptedResendKey = decrypt(config.resendApiKey);
+      // Task 1.3: Guard against malformed/corrupt encrypted values.
+      let decryptedResendKey: string;
+      try {
+        decryptedResendKey = decrypt(config.resendApiKey);
+      } catch (err) {
+        logger.error("[MAIL_DISPATCH] Failed to decrypt Resend API key", err);
+        return { success: false, error: "Failed to decrypt email credentials. Please re-save your API key in Settings." };
+      }
       const resend = new Resend(decryptedResendKey);
       
       const { data, error } = await resend.emails.send({
@@ -78,7 +85,14 @@ export async function dispatchEmail(
 
     // Fallback to SMTP if configured
     if (config.smtpHost && config.smtpPort && config.smtpUser && config.smtpPassword) {
-      const decryptedPassword = decrypt(config.smtpPassword);
+      // Task 1.3: Guard against malformed/corrupt encrypted values.
+      let decryptedPassword: string;
+      try {
+        decryptedPassword = decrypt(config.smtpPassword);
+      } catch (err) {
+        logger.error("[MAIL_DISPATCH] Failed to decrypt SMTP password", err);
+        return { success: false, error: "Failed to decrypt email credentials. Please re-save your SMTP password in Settings." };
+      }
 
       const transporter = nodemailer.createTransport({
         host: config.smtpHost,
@@ -148,7 +162,19 @@ export async function dispatchEmailBatch(
 
   // ── Resend batch path ─────────────────────────────────────────────────────
   if (config.resendApiKey) {
-    const resend = new Resend(decrypt(config.resendApiKey));
+    // Task 1.3: Guard against malformed/corrupt encrypted values in batch path.
+    let resendKey: string;
+    try {
+      resendKey = decrypt(config.resendApiKey);
+    } catch (err) {
+      logger.error("[MAIL_DISPATCH_BATCH] Failed to decrypt Resend API key", err);
+      return items.map((item) => ({
+        recipient: item.recipient,
+        success: false,
+        error: "Failed to decrypt email credentials. Please re-save your API key in Settings.",
+      }));
+    }
+    const resend = new Resend(resendKey);
     const results: BatchDispatchResult[] = [];
 
     for (const chunk of chunkArray(items, RESEND_BATCH_MAX)) {

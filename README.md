@@ -27,18 +27,17 @@
 
 ## 🕵️ How the Lead Generation Agent Works
 
-The autonomous lead generation pipeline (`POST /api/agent`) operates in 4 robust phases:
+The pipeline runs **asynchronously** via a BullMQ job queue (3 workers: Discovery → Extraction → Validation). `POST /api/agent` enqueues the job and returns immediately; clients poll `GET /api/agent/status?jobId=` for progress.
 
-1. **Orchestration** — LLM translates a natural language prompt into 10-15 highly targeted Google search queries.
-2. **Search & Filter** — Serper.dev fetches up to 100 results per query. URLs are aggressively filtered through 10+ block-lists (aggregators, job boards, social media, CDNs) and capped at 200 unique URLs.
-3. **Scrape & Extract** — Processed in throttled batches (10 URLs per batch, 500ms delay):
+1. **Discovery Worker** — LLM translates the prompt into 10-15 targeted Google search queries via Serper.dev. URLs are filtered through 10+ block-lists (aggregators, social media, CDNs) and capped at 200 unique URLs.
+2. **Extraction Worker** — Each URL is processed in its own job:
    - **Fetch:** Grabs HTML with a 5s timeout and standard browser User-Agent.
-   - **Cleanse:** Cheerio strips out noise (navs, footers, modals, cookie banners).
-   - **Markdown:** Converts to Markdown using `node-html-markdown`.
-   - **Filter:** Retains only lines matching email/phone regex or contact context keywords.
-   - **Regex-First:** Extracts emails via Regex. If found, **LLM extraction is skipped entirely** (0 tokens used).
-   - **LLM Fallback:** If Regex fails but contact signals exist, it falls back to the Multi-LLM chain.
-4. **Persist** — Upserts leads into the PostgreSQL database, handling duplicate race conditions gracefully (Prisma P2002).
+   - **Cleanse:** Cheerio strips noise (navs, footers, modals, cookie banners).
+   - **Markdown:** Converts to Markdown via `node-html-markdown`.
+   - **Regex-First:** Extracts emails via regex. If found, **LLM is skipped entirely** (0 tokens).
+   - **LLM Fallback:** Cerebras → Groq → Gemini chain if regex finds nothing.
+3. **Validation Worker** — 3-agent gate (Criteria → Intent → Quality) with anti-hallucination citation guard. Failed leads go to a Dead Letter Queue (DLQ).
+4. **Persist** — Upserts leads into PostgreSQL. Atomic `PipelineJob` DONE transition prevents race conditions under concurrent completions.
 
 ---
 
@@ -92,7 +91,7 @@ HyperDrive AI maximizes uptime and throughput via a smart rotation and fallback 
 | Package | Version | Purpose |
 |---------|---------|---------|
 | [Clerk](https://clerk.com/) | 7.3.1 | Auth, user management, webhook provisioning |
-| [Groq SDK](https://groq.com/) | 1.1.2 | Ultra-fast LLM inference (Llama 3.3 70B) |
+| [Groq API](https://groq.com/) | via `fetch` | Ultra-fast LLM inference (Llama 3.3 70B) — called via raw HTTP |
 | [@google/genai](https://aistudio.google.com/) | 2.4.0 | Gemini LLM fallback |
 | [Resend](https://resend.com/) | 6.9.4 | Transactional email API |
 | `nodemailer` | 8.0.7 | SMTP email dispatch for BYOK |
@@ -196,6 +195,14 @@ hyperdrive-ai/
 │   │   ├── mail/
 │   │   │   ├── dispatcher.ts         # dispatchEmail + dispatchEmailBatch (Resend + SMTP)
 │   │   │   └── providerLimits.ts     # DAILY_EMAIL_LIMIT constant
+│   │   ├── queue/
+│   │   │   ├── workers/
+│   │   │   │   ├── discovery.worker.ts   # Worker 1: prompt → target URLs
+│   │   │   │   ├── extraction.worker.ts  # Worker 2: URL → extracted contacts
+│   │   │   │   └── validation.worker.ts  # Worker 3: lead validation + DB persist
+│   │   │   ├── index.ts              # BullMQ queue definitions + typed connectionConfig
+│   │   │   ├── pipeline.ts           # Helper: enqueue a full discovery job
+│   │   │   └── worker-server.ts      # Entry point for the standalone worker process
 │   │   ├── scraper/
 │   │   │   ├── extractor.ts          # 6-step extraction pipeline
 │   │   │   ├── filter.ts             # Contact segment filter (email/phone/keyword lines)
@@ -207,7 +214,8 @@ hyperdrive-ai/
 │   │   ├── logger.ts                 # Structured JSON logger (info/warn/error)
 │   │   ├── prisma.ts                 # Prisma client singleton
 │   │   ├── rate-limit.ts             # In-memory sliding-window & Upstash rate limiter
-│   │   └── security.ts               # AES-256-GCM encrypt/decrypt for BYOK credentials
+│   │   ├── security.ts               # AES-256-GCM encrypt/decrypt for BYOK credentials
+│   │   └── workspace.ts              # getOrCreateWorkspace() shared utility
 │   └── middleware.ts                 # Clerk route protection middleware
 ├── .github/
 │   └── workflows/
@@ -284,17 +292,16 @@ User ──< Workspace ──< Campaign ──< EmailLog
 }
 ```
 
-**Response:**
+**Response** *(job enqueued — non-blocking):*
 ```json
-{
-  "success": true,
-  "plan": { "searchQueries": ["query 1", "query 2"], "targetCriteria": "..." },
-  "targetUrls": ["url1", "url2"],
-  "leadsExtracted": 47,
-  "leadsSkipped": 3,
-  "leads": [{ "id": "...", "email": "...", "companyName": "..." }]
-}
+{ "jobId": "uuid", "status": "queued" }
 ```
+
+Poll for progress with `GET /api/agent/status?jobId=<jobId>`:
+```json
+{ "status": "RUNNING", "processedUrls": 42, "totalUrls": 120, "leadsFound": 17 }
+```
+Final status values: `QUEUED` → `RUNNING` → `DONE` | `FAILED`
 
 ---
 
@@ -418,6 +425,7 @@ Copy `.env.example` to `.env.local` and fill in the values:
 | `GEMINI_API_KEYS` | ⚠️ Optional | Comma-separated pool for key rotation |
 | `UPSTASH_REDIS_REST_URL` | ⚠️ Optional | Distributed rate limiting for agent route |
 | `UPSTASH_REDIS_REST_TOKEN` | ⚠️ Optional | Upstash Redis auth token |
+| `REDIS_URL` | ✅ | Redis connection URL for BullMQ pipeline (e.g. `redis://localhost:6379`) |
 | `E2E_CLERK_EMAIL` | 🧪 Dev only | Playwright E2E test credentials |
 | `E2E_CLERK_PASSWORD` | 🧪 Dev only | Playwright E2E test credentials |
 
@@ -427,13 +435,14 @@ Copy `.env.example` to `.env.local` and fill in the values:
 
 ### Prerequisites
 - **Node.js 20+** and **npm**
+- **Redis** — required for BullMQ pipeline (`docker run -p 6379:6379 redis:alpine` for local dev, or a managed instance in production)
 - **Neon PostgreSQL** database ([neon.tech](https://neon.tech))
 - **Clerk** account ([clerk.com](https://clerk.com))
 - **Serper.dev** account ([serper.dev](https://serper.dev) - free tier)
 - **Groq** account ([groq.com](https://groq.com))
 - **Cerebras** account (optional but recommended — [cloud.cerebras.ai](https://cloud.cerebras.ai))
 - **Gemini** API key (optional — [aistudio.google.com](https://aistudio.google.com))
-- **Upstash Redis** (optional — [upstash.com](https://upstash.com), free tier, no credit card)
+- **Upstash Redis** (optional — [upstash.com](https://upstash.com), for distributed rate limiting)
 - **Resend** account (optional — [resend.com](https://resend.com))
 
 ### Installation
@@ -461,11 +470,24 @@ Copy `.env.example` to `.env.local` and fill in the values:
    npx prisma db push
    ```
 
-5. **Run the development server**
+5. **Start Redis** (in a separate terminal)
+   ```bash
+   docker run -p 6379:6379 redis:alpine
+   ```
+
+6. **Run the development server**
    ```bash
    npm run dev
    ```
+
+7. **Run the BullMQ worker** (in a second separate terminal — required for lead generation)
+   ```bash
+   npm run worker:dev
+   ```
    Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+> [!IMPORTANT]
+> The worker process (`npm run worker:dev`) **must be running** alongside `npm run dev` for the lead generation pipeline to process jobs. Without it, jobs will be enqueued but never executed.
 
 ### ⚙️ Webhooks & Cron Setup
 
@@ -527,13 +549,15 @@ E2E specs live in `e2e/`. The `campaign-flow.spec.ts` test covers the full campa
 
 | Script | Command | Description |
 |--------|---------|-------------|
-| `dev` | `next dev` | Start development server |
+| `dev` | `next dev` | Start Next.js development server |
 | `build` | `prisma generate && next build` | Production build |
 | `start` | `next start` | Start production server |
-| `lint` | `eslint . --ext .ts,.tsx,.js,.jsx` | Run ESLint with specific file extensions |
+| `lint` | `eslint . --ext .ts,.tsx,.js,.jsx` | Run ESLint |
 | `test` | `vitest run` | Run unit tests |
 | `test:watch` | `vitest` | Run unit tests in watch mode |
 | `test:e2e` | `playwright test` | Run E2E tests |
+| `worker:dev` | `tsx watch src/lib/queue/worker-server.ts` | Start BullMQ worker (hot-reload) |
+| `worker:start` | `tsx src/lib/queue/worker-server.ts` | Start BullMQ worker (production) |
 
 ---
 

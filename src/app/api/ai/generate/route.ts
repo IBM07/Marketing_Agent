@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { Groq } from "groq-sdk";
 import { rateLimiter } from "@/lib/rate-limit";
 import { z } from "zod";
 import { apiHandler } from "@/lib/api-handler";
@@ -80,18 +79,24 @@ export const POST = apiHandler(async (req: Request) => {
   }
 
   const systemPrompt = getSystemPrompt(goal, productName);
-  const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+  const GROQ_API_KEY = process.env.GROQ_API_KEY;
+  const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 
   const abortController = new AbortController();
   const timeoutId = setTimeout(() => abortController.abort(), 30000); // 30s timeout
 
-  let completion;
+  let completion: { choices: { message: { content: string | null } }[] } | null = null;
   let usedModel = model;
 
-  try {
-    completion = await groq.chat.completions.create(
-      {
-        model: usedModel,
+  async function callGroq(modelName: string, signal: AbortSignal) {
+    const res = await fetch(GROQ_API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${GROQ_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: modelName,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: `Product/Niche Details:\n${prompt}` },
@@ -99,32 +104,30 @@ export const POST = apiHandler(async (req: Request) => {
         response_format: { type: "json_object" },
         temperature: 1,
         max_tokens: 1024,
-      },
-      { signal: abortController.signal }
-    );
+      }),
+      signal,
+    });
+
+    if (!res.ok) {
+      throw new Error(`Groq API error: ${res.status} ${res.statusText}`);
+    }
+
+    return res.json() as Promise<{ choices: { message: { content: string | null } }[] }>;
+  }
+
+  try {
+    completion = await callGroq(usedModel, abortController.signal);
   } catch (error: unknown) {
     // If primary model fails or times out, try fallback
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.warn(`[AI_GENERATE] Primary model ${model} failed, trying fallback. Error:`, errorMessage);
     usedModel = "llama3-8b-8192";
-    
+
     const fallbackController = new AbortController();
     const fallbackTimeoutId = setTimeout(() => fallbackController.abort(), 30000);
-    
+
     try {
-      completion = await groq.chat.completions.create(
-        {
-          model: usedModel,
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: `Product/Niche Details:\n${prompt}` },
-          ],
-          response_format: { type: "json_object" },
-          temperature: 1,
-          max_tokens: 1024,
-        },
-        { signal: fallbackController.signal }
-      );
+      completion = await callGroq(usedModel, fallbackController.signal);
     } catch {
       clearTimeout(fallbackTimeoutId);
       throw new AppError(502, "Failed to generate content from Groq after fallback", "AI_PROVIDER_ERROR");
