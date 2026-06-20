@@ -1,0 +1,144 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# HyperDrive AI — Fully Self-Contained Docker Stack
+#
+# Usage:
+#   1. Copy .env.example → .env and fill in your API keys
+#   2. Run: docker compose up -d
+#   3. Open: http://localhost:3000
+#   4. Verify: curl http://localhost:3000/api/health
+#
+# Services:
+#   postgres     — PostgreSQL 16 database (persistent volume)
+#   redis        — Redis message broker for BullMQ queues
+#   app          — Next.js web server (port 3000) — auto-runs Prisma migrations
+#   worker       — BullMQ async pipeline workers (discovery + extraction + validation)
+#   browserless  — Optional headless Chrome for JS-rendered site scraping (port 3001)
+#
+# The `app` and `worker` services share the same .env file, Postgres, and Redis.
+# They are decoupled — either can be restarted independently without affecting the other.
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  # ── PostgreSQL Database ───────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    # ⚠️ Ports are intentionally NOT exposed to the host.
+    # postgres is only reachable by other services inside the Docker network.
+    # Uncomment the block below ONLY for local debugging — NEVER on a production VPS.
+    # ports:
+    #   - "5432:5432"
+    environment:
+      POSTGRES_USER: hyperdrive
+      POSTGRES_PASSWORD: hyperdrive
+      POSTGRES_DB: hyperdrive_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hyperdrive -d hyperdrive_db"]
+      interval: 10s
+      timeout: 5s
+      start_period: 10s
+      retries: 5
+
+  # ── Next.js Web App ────────────────────────────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # Pass build-time ARGs so Next.js can embed public env vars at build time
+        DATABASE_URL: postgresql://hyperdrive:hyperdrive@postgres:5432/hyperdrive_db
+        NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
+        CLERK_PUBLISHABLE_KEY: ${CLERK_PUBLISHABLE_KEY}
+        NEXT_PUBLIC_CLERK_SIGN_IN_URL: ${NEXT_PUBLIC_CLERK_SIGN_IN_URL:-/sign-in}
+        NEXT_PUBLIC_CLERK_SIGN_UP_URL: ${NEXT_PUBLIC_CLERK_SIGN_UP_URL:-/sign-up}
+        NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL: ${NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL:-/dashboard}
+        NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL: ${NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL:-/dashboard}
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+    ports:
+      - "3000:3000"
+    env_file: .env
+    environment:
+      # Override DB and Redis URLs to point at the services defined in this compose file
+      DATABASE_URL: postgresql://hyperdrive:hyperdrive@postgres:5432/hyperdrive_db
+      REDIS_URL: redis://redis:6379
+      BROWSERLESS_URL: http://browserless:3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+
+  # ── BullMQ Pipeline Workers ────────────────────────────────────────────────
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+      args:
+        DATABASE_URL: postgresql://hyperdrive:hyperdrive@postgres:5432/hyperdrive_db
+    env_file: .env
+    environment:
+      # Override DB and Redis URLs to point at the services defined in this compose file
+      DATABASE_URL: postgresql://hyperdrive:hyperdrive@postgres:5432/hyperdrive_db
+      REDIS_URL: redis://redis:6379
+      BROWSERLESS_URL: http://browserless:3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "worker-server"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+
+  # ── Redis (BullMQ message broker) ─────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    # ⚠️ Ports are intentionally NOT exposed to the host.
+    # redis is only reachable by other services inside the Docker network.
+    # Uncomment the block below ONLY for local debugging — NEVER on a production VPS.
+    # ports:
+    #   - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    # Persist data to disk so queued jobs survive a Redis restart
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      start_period: 10s
+      retries: 5
+
+  # ── Browserless Chrome (optional) ─────────────────────────────────────────
+  # Only needed for scraping JavaScript-rendered pages (e.g., React/Vue SPAs).
+  # If you don't need JS rendering, comment out this service block.
+  browserless:
+    image: ghcr.io/browserless/chromium:latest
+    ports:
+      - "3001:3000"
+    restart: unless-stopped
+    environment:
+      # Disable token auth for local development (not suitable for production)
+      TOKEN: ""
+      MAX_CONCURRENT_SESSIONS: "5"
+      TIMEOUT: "30000"
+    # No healthcheck — Browserless exposes /json endpoint but it starts slowly
+
+volumes:
+  # Named volumes — persist data across container restarts
+  postgres_data:
+  redis_data:

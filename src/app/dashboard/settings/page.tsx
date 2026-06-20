@@ -2,11 +2,10 @@
 
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { CheckCircle2, Key, Mail, RefreshCw, XCircle, Bot, Save, Loader2, Server, Shield } from "lucide-react";
+import { CheckCircle2, Key, RefreshCw, XCircle, Bot, Save, Loader2, Server, Shield } from "lucide-react";
 import Link from "next/link";
 
 type SettingsData = {
-  resendApiKey: string | null;
   smtpHost: string | null;
   smtpPort: number | null;
   smtpUser: string | null;
@@ -23,7 +22,6 @@ export default function SettingsPage() {
   const [saveMessage, setSaveMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   const [form, setForm] = useState({
-    resendApiKey: "",
     smtpHost: "",
     smtpPort: "",
     smtpUser: "",
@@ -45,7 +43,6 @@ export default function SettingsPage() {
         if (settingsRes.ok) {
           const data: SettingsData = await settingsRes.json();
           setForm({
-            resendApiKey: data.resendApiKey || "",
             smtpHost: data.smtpHost || "",
             smtpPort: data.smtpPort?.toString() || "",
             smtpUser: data.smtpUser || "",
@@ -77,7 +74,6 @@ export default function SettingsPage() {
 
     try {
       const payload: Record<string, string | number | null> = {
-        resendApiKey: form.resendApiKey,
         smtpHost: form.smtpHost || null,
         smtpPort: form.smtpPort ? parseInt(form.smtpPort) : null,
         smtpUser: form.smtpUser || null,
@@ -130,38 +126,6 @@ export default function SettingsPage() {
       </div>
 
       <div className="space-y-6">
-        {/* Section 1 — Resend API Key */}
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="border border-card-border/50 bg-card/20 backdrop-blur-xl rounded-2xl p-6 shadow-lg"
-        >
-          <div className="flex items-center gap-3 mb-6">
-            <div className="p-3 bg-primary/10 rounded-lg border border-primary/20">
-              <Mail className="w-6 h-6 text-primary" />
-            </div>
-            <div>
-              <h3 className="font-semibold text-lg">Resend API Key</h3>
-              <p className="text-xs text-muted-foreground">Your personal Resend API key for email dispatch (BYOK)</p>
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            <div>
-              <label htmlFor="resendApiKey" className="block text-sm font-medium mb-2">API Key</label>
-              <input
-                id="resendApiKey"
-                type="password"
-                value={form.resendApiKey}
-                onChange={(e) => setForm({ ...form, resendApiKey: e.target.value })}
-                placeholder="re_xxxxxxxxxxxxxxxxxxxxxxxx"
-                className="w-full bg-background/50 border border-card-border rounded-md px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all text-sm font-mono"
-              />
-              <p className="text-xs text-muted-foreground mt-1">Leave as •••••••• to keep unchanged. Clear field to remove.</p>
-            </div>
-          </div>
-        </motion.div>
 
         {/* Section 2 — SMTP Credentials */}
         <motion.div 

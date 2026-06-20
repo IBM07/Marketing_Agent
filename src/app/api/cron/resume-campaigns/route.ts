@@ -1,7 +1,7 @@
 import prisma from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { dispatchEmailBatch } from "@/lib/mail/dispatcher";
-import { DAILY_EMAIL_LIMIT } from "@/lib/mail/providerLimits";
+import { getDailyEmailLimit } from "@/lib/mail/providerLimits";
 
 export const dynamic = "force-dynamic";
 
@@ -33,7 +33,7 @@ export async function GET(req: Request) {
         sentAt: { gte: startOfToday },
       },
     });
-    const remaining = Math.max(0, DAILY_EMAIL_LIMIT - emailsSentToday);
+    const remaining = Math.max(0, getDailyEmailLimit() - emailsSentToday);
 
     if (remaining === 0) {
       results.push({ campaignId: campaign.id, skipped: "no quota" });

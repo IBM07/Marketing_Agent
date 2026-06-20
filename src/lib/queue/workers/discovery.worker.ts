@@ -28,6 +28,68 @@ import { KeyRotationLLMClient } from "../../ai/rotation-client";
 
 const llmClient = new KeyRotationLLMClient();
 
+// ---------------------------------------------------------------------------
+// Domain-level URL deduplication
+//
+// If Serper returns acme.com/contact, acme.com/team, and acme.com/about,
+// all 3 would be scraped — burning 3× the quota for the same company.
+// This deduplicator groups by root domain and keeps only the best URL
+// per domain (priority: /contact > /about > /team > homepage).
+// ---------------------------------------------------------------------------
+
+/**
+ * Score a URL by how likely it is to contain contact information.
+ * Higher score = better URL to scrape for a given domain.
+ */
+function scoreUrlForContact(url: string): number {
+  const path = url.toLowerCase();
+  if (/\/contact/i.test(path)) return 100;
+  if (/\/about/i.test(path)) return 80;
+  if (/\/team/i.test(path)) return 70;
+  if (/\/staff/i.test(path)) return 65;
+  if (/\/people/i.test(path)) return 60;
+  if (/\/leadership/i.test(path)) return 55;
+  if (/\/our-team/i.test(path)) return 50;
+  // Homepage or other paths get the lowest score
+  return 10;
+}
+
+/**
+ * Extract the root domain from a URL, stripping `www.` prefix.
+ * Example: "https://www.acme.com/contact" → "acme.com"
+ */
+function extractRootDomain(url: string): string {
+  try {
+    const hostname = new URL(url).hostname.toLowerCase();
+    return hostname.replace(/^www\./, "");
+  } catch {
+    // If URL parsing fails, return the raw string as-is
+    return url;
+  }
+}
+
+/**
+ * Deduplicates URLs at the domain level.
+ * Groups by root domain and keeps only the highest-scoring URL per domain.
+ *
+ * @returns The deduplicated URL list
+ */
+function deduplicateByDomain(urls: string[]): string[] {
+  const domainMap = new Map<string, { url: string; score: number }>();
+
+  for (const url of urls) {
+    const domain = extractRootDomain(url);
+    const score = scoreUrlForContact(url);
+    const existing = domainMap.get(domain);
+
+    if (!existing || score > existing.score) {
+      domainMap.set(domain, { url, score });
+    }
+  }
+
+  return Array.from(domainMap.values()).map((entry) => entry.url);
+}
+
 /**
  * Pre-flight sanity gate.
  *
@@ -130,8 +192,18 @@ export function startDiscoveryWorker() {
         }
       }
 
-      const targetUrls = Array.from(allUrls).slice(0, 200);
-      logger.info(`[DISCOVERY_WORKER] ${targetUrls.length} unique target URLs discovered`);
+      const rawUrlList = Array.from(allUrls);
+
+      // Step 2.5: Domain-level deduplication
+      // Cuts token usage by ~40% — keeps only the best URL per root domain
+      // (priority: /contact > /about > /team > homepage)
+      const deduplicatedUrls = deduplicateByDomain(rawUrlList);
+      logger.info(
+        `[DISCOVERY_WORKER] Deduplicated ${rawUrlList.length} URLs → ${deduplicatedUrls.length} unique domains`
+      );
+
+      const targetUrls = deduplicatedUrls.slice(0, 200);
+      logger.info(`[DISCOVERY_WORKER] ${targetUrls.length} target URLs after dedup + cap`);
 
       // Step 3: Update DB job with the total count
       await prisma.pipelineJob.update({

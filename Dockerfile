@@ -63,6 +63,13 @@ COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
 
+# Copy Prisma schema (needed for `prisma db push` at container start)
+COPY --from=builder /app/prisma ./prisma
+
+# Copy the Docker entrypoint script
+COPY --from=builder /app/scripts/docker-entrypoint.sh ./scripts/docker-entrypoint.sh
+RUN chmod +x ./scripts/docker-entrypoint.sh
+
 # Set correct ownership.
 RUN chown -R nextjs:nodejs /app
 
@@ -70,8 +77,7 @@ USER nextjs
 
 EXPOSE 3000
 
-# DigitalOcean App Platform uses this to confirm the container is alive.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
   CMD curl -f http://localhost:3000/api/health || exit 1
 
-CMD ["node", "server.js"]
+CMD ["sh", "scripts/docker-entrypoint.sh"]

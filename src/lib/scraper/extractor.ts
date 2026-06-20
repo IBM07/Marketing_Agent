@@ -1,7 +1,7 @@
 import * as cheerio from "cheerio";
 import { NodeHtmlMarkdown } from "node-html-markdown";
 import { extractContactSegments } from "./filter";
-import { regexExtractContacts } from "./regex-extractor";
+import { regexExtractContacts, decodeCfEmails } from "./regex-extractor";
 import { KeyRotationLLMClient, LeadExtractionPayload } from "../ai/rotation-client";
 import { logger } from "../logger";
 
@@ -120,7 +120,14 @@ export async function extractLeadsFromUrl(
       return null;
     }
 
-    const rawHtml = await response.text();
+    const rawHtmlOriginal = await response.text();
+
+    // -----------------------------------------------------------------------
+    // STEP 1b: Cloudflare email decode — unwrap data-cfemail obfuscation
+    // This runs BEFORE Cheerio so decoded emails appear in the DOM text.
+    // Zero latency cost (pure string replacement, no network call).
+    // -----------------------------------------------------------------------
+    const rawHtml = decodeCfEmails(rawHtmlOriginal);
 
     // -----------------------------------------------------------------------
     // STEP 2: Cheerio — remove noise elements, keep meaningful DOM

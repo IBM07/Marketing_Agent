@@ -64,9 +64,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Features planned or in progress — not yet released.
 
-- Server Components migration for dashboard pages
+- Server Components migration for dashboard pages (currently Client Components)
 - Cursor-based pagination (replaces `skip/take` at 10K+ leads)
-- Structured logging via Datadog / Logtail
-- Database connection pooling via PgBouncer
-- Webhook signature verification for Resend delivery tracking
+- Structured logging via Datadog / Logtail integration
+- Database connection pooling via PgBouncer / Prisma Accelerate
 - Bundle size optimization (Three.js tree-shaking)
+- A/B email testing for campaigns
+- Visual workflow builder for automated follow-up sequences

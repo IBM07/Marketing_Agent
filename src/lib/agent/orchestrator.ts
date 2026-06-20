@@ -41,17 +41,17 @@ export async function createAgentPlan(prompt: string): Promise<AgentPlan> {
       "targetCriteria": "Extract email addresses, phone numbers, company name, and owner/founder name."
     }
 
-    Example Input: "Find me emails of digital marketing agencies in Karachi Pakistan"
+    Example Input: "Find emails of digital marketing agencies in New York"
     Example Output:
     {
       "searchQueries": [
-        "digital marketing agency Karachi",
-        "digital marketing company Karachi Pakistan",
-        "social media marketing firm Karachi",
-        "SEO agency Karachi Pakistan",
-        "online marketing company Karachi"
+        "digital marketing agency New York",
+        "digital marketing company NYC",
+        "social media marketing firm Manhattan",
+        "SEO agency New York",
+        "online marketing company New York"
       ],
-      "targetCriteria": "Extract email addresses, phone numbers, company name, and founder/owner/manager name for digital marketing agencies in Karachi."
+      "targetCriteria": "Extract email addresses, phone numbers, company name, and founder/owner/manager name for digital marketing agencies in New York."
     }
 
     Example Input: "freelancers in lahore who do web development"

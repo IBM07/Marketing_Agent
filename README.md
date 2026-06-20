@@ -1,14 +1,14 @@
 # 🚀 HyperDrive AI — Autonomous AI Lead Generation & Email Outreach Engine
 
-> **Deploy agents that search the web, scrape high-quality data, and extract verified contacts.** Built on Next.js 15, Cerebras/Groq/Gemini AI, DigitalOcean App Platform, and a stunning WebGL UI.
+> **Deploy agents that search the web, scrape publicly available contact information, and build verified lead lists.** Built on Next.js 15, Cerebras/Groq/Gemini AI, Docker, and a stunning WebGL UI.
 
-![Version](https://img.shields.io/badge/version-0.1.0-blue) ![License](https://img.shields.io/badge/license-MIT-green) ![Next.js](https://img.shields.io/badge/Next.js-15.3.6-black) ![Prisma](https://img.shields.io/badge/Prisma-7.5.0-2D3748) ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6) ![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker) ![DigitalOcean](https://img.shields.io/badge/DigitalOcean-deployed-0080FF?logo=digitalocean) ![Groq](https://img.shields.io/badge/Groq-LLM-orange) ![Cerebras](https://img.shields.io/badge/Cerebras-LLM-purple)
+![Version](https://img.shields.io/badge/version-0.1.0-blue) ![License](https://img.shields.io/badge/license-MIT-green) ![Next.js](https://img.shields.io/badge/Next.js-15.3.6-black) ![Prisma](https://img.shields.io/badge/Prisma-7.5.0-2D3748) ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6) ![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker) ![Groq](https://img.shields.io/badge/Groq-LLM-orange) ![Cerebras](https://img.shields.io/badge/Cerebras-LLM-purple)
 
 ---
 
 ## 🎯 Overview
 
-**HyperDrive AI** is a full-stack SaaS platform that empowers builders to create hyper-converting marketing campaigns powered by autonomous AI agents. It features:
+**HyperDrive AI** is a self-hostable, open-source lead generation platform that autonomously searches the web, scrapes publicly available contact information, and builds verified lead lists — all powered by multi-LLM AI agents. It is **not** an enrichment database like Apollo or Hunter; it finds contacts by actually crawling the web in real-time. It features:
 
 - 🔍 **Autonomous Lead Generation Agent** — Natural language prompt → Serper.dev Google Search → URL filtering → Cheerio HTML scrape → Regex extraction (LLM skipped if emails found) → Cerebras/Groq/Gemini fallback chain → PostgreSQL upsert
 - 🤖 **Multi-LLM Key Rotation** — Cerebras (primary, 1M tok/day free) → Groq (secondary) → Gemini (final fallback), with per-key exponential backoff and 429 rotation
@@ -219,8 +219,7 @@ hyperdrive-ai/
 │   └── middleware.ts                 # Clerk route protection middleware
 ├── .github/
 │   └── workflows/
-│       ├── ci.yml                    # Lint + build + unit test on PRs & pushes
-│       └── deploy.yml                # Auto-deploy to DigitalOcean via doctl on main push
+│       └── ci.yml                    # Lint + build + unit test on PRs & pushes
 ├── prisma/
 │   └── schema.prisma                 # Database schema (enums, indexes, relations)
 ├── e2e/
@@ -288,7 +287,7 @@ User ──< Workspace ──< Campaign ──< EmailLog
 **Request:**
 ```json
 {
-  "prompt": "Find digital marketing agencies in Karachi"
+  "prompt": "Find digital marketing agencies in New York"
 }
 ```
 
@@ -435,22 +434,20 @@ Copy `.env.example` to `.env.local` and fill in the values:
 
 ### Prerequisites
 - **Node.js 20+** and **npm**
-- **Redis** — required for BullMQ pipeline (`docker run -p 6379:6379 redis:alpine` for local dev, or a managed instance in production)
-- **Neon PostgreSQL** database ([neon.tech](https://neon.tech))
+- **Docker + Docker Compose** (for the easiest setup, or for production)
 - **Clerk** account ([clerk.com](https://clerk.com))
 - **Serper.dev** account ([serper.dev](https://serper.dev) - free tier)
 - **Groq** account ([groq.com](https://groq.com))
 - **Cerebras** account (optional but recommended — [cloud.cerebras.ai](https://cloud.cerebras.ai))
 - **Gemini** API key (optional — [aistudio.google.com](https://aistudio.google.com))
-- **Upstash Redis** (optional — [upstash.com](https://upstash.com), for distributed rate limiting)
 - **Resend** account (optional — [resend.com](https://resend.com))
 
-### Installation
+### Option A: Local Development (npm)
 
 1. **Clone the repository**
    ```bash
-   git clone <repo-url>
-   cd hyperdrive-ai
+   git clone https://github.com/IBM07/Marketing_Agent.git
+   cd Marketing_Agent
    ```
 
 2. **Install dependencies**
@@ -464,15 +461,15 @@ Copy `.env.example` to `.env.local` and fill in the values:
    # Fill in all required variables
    ```
 
-4. **Push the database schema**
+4. **Start Redis** (in a separate terminal)
+   ```bash
+   docker run -p 6379:6379 redis:alpine
+   ```
+
+5. **Push the database schema**
    ```bash
    npx prisma generate
    npx prisma db push
-   ```
-
-5. **Start Redis** (in a separate terminal)
-   ```bash
-   docker run -p 6379:6379 redis:alpine
    ```
 
 6. **Run the development server**
@@ -488,6 +485,140 @@ Copy `.env.example` to `.env.local` and fill in the values:
 
 > [!IMPORTANT]
 > The worker process (`npm run worker:dev`) **must be running** alongside `npm run dev` for the lead generation pipeline to process jobs. Without it, jobs will be enqueued but never executed.
+
+### Option B: Docker Deployment (Recommended for Production)
+
+The entire stack — Postgres, Redis, Browserless, the web app, and the BullMQ worker — runs self-contained with a single command.
+
+1. **Clone and configure**
+   ```bash
+   git clone https://github.com/IBM07/Marketing_Agent.git
+   cd Marketing_Agent
+   cp .env.example .env
+   # Fill in your Clerk, Serper, Groq/Cerebras keys
+   # DATABASE_URL, REDIS_URL, and BROWSERLESS_URL are auto-configured by Docker Compose
+   ```
+
+2. **Start the stack**
+   ```bash
+   docker compose up -d
+   ```
+
+3. **Verify the deployment**
+   ```bash
+   curl http://localhost:3000/api/health
+   ```
+   You should see `"status": "ok"` with `"db": "connected"` and `"redis": "connected"`.
+
+4. **View logs**
+   ```bash
+   docker compose logs -f app worker
+   ```
+
+#### Production Hardening Notes
+
+| Concern | Recommendation |
+|---------|----------------|
+| **Database** | Use a managed PostgreSQL instance (Neon, Supabase, AWS RDS) and override `DATABASE_URL` in your `.env` |
+| **Redis persistence** | The docker-compose Redis uses AOF persistence. For production, consider a managed Redis (Upstash, Redis Cloud) |
+| **Reverse proxy** | Place Nginx or Caddy in front of port 3000 with SSL termination |
+| **Secrets** | Never commit `.env` to version control. Use Docker secrets or a vault in production |
+| **Monitoring** | The `/api/health` endpoint is compatible with any uptime monitor or container orchestrator |
+
+### 🌐 Deploying to a Server
+
+#### Option C: VPS (DigitalOcean Droplet, Hetzner, AWS EC2, etc.)
+
+The fastest path to a live public URL. Works on any Ubuntu 22.04 VPS.
+
+1. **SSH into your server and install Docker:**
+   ```bash
+   curl -fsSL https://get.docker.com | sh
+   sudo usermod -aG docker $USER && newgrp docker
+   ```
+
+2. **Clone the repo and configure:**
+   ```bash
+   git clone https://github.com/IBM07/Marketing_Agent.git
+   cd Marketing_Agent
+   cp .env.example .env
+   nano .env   # Fill in your API keys
+   ```
+
+3. **Start the full stack:**
+   ```bash
+   docker compose up -d
+   ```
+
+4. **Set up Caddy for automatic HTTPS** (replace `yourdomain.com` with your actual domain):
+   ```bash
+   sudo apt install -y caddy
+   sudo nano /etc/caddy/Caddyfile
+   ```
+   Paste this:
+   ```
+   yourdomain.com {
+       reverse_proxy localhost:3000
+   }
+   ```
+   ```bash
+   sudo systemctl reload caddy
+   ```
+   Caddy automatically provisions a free Let's Encrypt SSL certificate. Your app is now live at `https://yourdomain.com`.
+
+5. **Update `NEXT_PUBLIC_APP_URL`** in your `.env` to `https://yourdomain.com`, then rebuild:
+   ```bash
+   docker compose up -d --build
+   ```
+
+> [!TIP]
+> For a $6/month VPS recommendation: DigitalOcean's Basic Droplet (1 vCPU, 1GB RAM) handles up to ~10 concurrent users easily. Upgrade to 2GB RAM if you run many concurrent lead-gen jobs.
+
+---
+
+#### Option D: DigitalOcean App Platform (Managed — No Server to Maintain)
+
+DigitalOcean App Platform builds and runs your Docker container automatically on every push to `main`.
+
+1. Go to [cloud.digitalocean.com/apps](https://cloud.digitalocean.com/apps) → **Create App** → **GitHub**
+2. Select `IBM07/Marketing_Agent`, branch `main`, check **Autodeploy**
+3. DigitalOcean auto-detects the `Dockerfile`
+4. Set **HTTP Port** to `3000` and **Health Check Path** to `/api/health`
+5. Add all environment variables from `.env.example` under **App-Level Env Vars**
+6. Add a second **Worker** component pointing to `Dockerfile.worker` — this runs the BullMQ pipeline
+7. Click **Deploy**
+
+> [!NOTE]
+> Use a **managed PostgreSQL** (DO Databases, Neon, or Supabase) and **managed Redis** (Upstash or DO Redis) for App Platform — the bundled `docker-compose.yml` services don't apply here.
+
+---
+
+#### Option E: Railway
+
+Railway supports multi-service deployments via `railway.toml` or a Dockerfile.
+
+1. Install Railway CLI: `npm i -g @railway/cli` → `railway login`
+2. ```bash
+   cd Marketing_Agent
+   railway init
+   railway up
+   ```
+3. Add a second service for the worker: **New Service → GitHub Repo → Custom Start Command:** `node_modules/.bin/tsx src/lib/queue/worker-server.ts`
+4. Add a PostgreSQL and Redis plugin from the Railway dashboard
+5. Set environment variables in Railway dashboard; Railway auto-injects `DATABASE_URL` and `REDIS_URL`
+
+---
+
+#### Option F: Render
+
+1. Go to [render.com](https://render.com) → **New** → **Web Service** → connect `IBM07/Marketing_Agent`
+2. **Environment:** Docker | **Dockerfile Path:** `./Dockerfile`
+3. **Health Check Path:** `/api/health`
+4. Add environment variables in the dashboard
+5. Create a second **Background Worker** service pointing to `Dockerfile.worker` for the BullMQ workers
+6. Add a PostgreSQL and Redis instance from the Render dashboard
+
+---
 
 ### ⚙️ Webhooks & Cron Setup
 
@@ -515,16 +646,62 @@ Authorization: Bearer <YOUR_CRON_SECRET>
 
 ---
 
-## 🚢 Deployment (DigitalOcean App Platform)
+## 🛠️ Troubleshooting
 
-The application is containerized and configured for auto-deployment to DigitalOcean App Platform.
+### Jobs enqueue but no leads are found
+**Cause:** The BullMQ worker is not running.  
+**Fix:** Start the worker process in a second terminal:
+```bash
+npm run worker:dev   # local dev
+# OR for Docker:
+docker compose up worker
+```
+
+### `Error: REDIS_URL is required`
+**Cause:** Redis is not running or `REDIS_URL` is missing from your `.env`.  
+**Fix:**
+```bash
+# Quick local Redis via Docker:
+docker run -d -p 6379:6379 redis:alpine
+# Then set in .env:
+REDIS_URL=redis://localhost:6379
+```
+
+### `PrismaClientInitializationError` on startup
+**Cause:** Database is not reachable or schema hasn't been pushed.  
+**Fix:**
+```bash
+npx prisma db push    # creates all tables from schema
+npx prisma generate   # regenerates the Prisma client
+```
+
+### Clerk sign-in redirects to an error page
+**Cause:** `NEXT_PUBLIC_APP_URL` doesn't match your Clerk app's **Allowed Origins**.  
+**Fix:** Go to Clerk Dashboard → **Domains** → add your local URL (`http://localhost:3000`) or your production domain.
+
+### `docker compose up` fails with "image not found"
+**Cause:** The Docker image needs to be built first.  
+**Fix:** Use `docker compose up --build` on first run (and after any code changes).
+
+### Health check shows `"db": "error"` 
+**Cause:** The database container isn't ready yet.  
+**Fix:** Wait 30–60 seconds for PostgreSQL to fully initialize, then retry `curl http://localhost:3000/api/health`.
+
+### `ENCRYPTION_KEY` error on startup
+**Cause:** The encryption key is missing or too short (must be 64 hex characters / 32 bytes).  
+**Fix:** Generate a new one:
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+Copy the output and set `ENCRYPTION_KEY=<output>` in your `.env`.
+
+---
+
+## 🔧 CI/CD
 
 - **Docker:** Uses a 3-stage Dockerfile (`deps` → `builder` → `runner`) with a non-root `nextjs` user for security.
 - **Healthcheck:** Container performs a live DB ping via `curl -f http://localhost:3000/api/health` every 30s.
-- **CI/CD:** 
-  - `.github/workflows/ci.yml`: Runs linter, Prisma generation, build, and unit tests on PRs and pushes to `main`/`master`.
-  - `.github/workflows/deploy.yml`: Auto-deploys via `doctl apps create-deployment` on push to `main`.
-- **Secrets:** Requires `DIGITALOCEAN_ACCESS_TOKEN` and `DIGITALOCEAN_APP_ID` configured in GitHub Secrets.
+- **CI:** `.github/workflows/ci.yml` runs linter, Prisma generation, build, and unit tests on PRs and pushes to `main`/`master`.
 
 ---
 

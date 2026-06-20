@@ -13,6 +13,11 @@ describe('Environment Validation', () => {
     process.env.RESEND_API_KEY = 're_test';
     process.env.CLERK_WEBHOOK_SECRET = 'whsec_test';
     process.env.RESEND_FROM_EMAIL = 'test@example.com';
+    // These were added to the schema after the test was first written:
+    process.env.ENCRYPTION_KEY = '0000000000000000000000000000000000000000000000000000000000000000';
+    process.env.CRON_SECRET = '00000000000000000000000000000000';
+    process.env.SERPER_API_KEY = 'dummy_serper_key';
+    process.env.REDIS_URL = 'redis://localhost:6379';
 
     const { env } = await import('../env');
     expect(env.DATABASE_URL).toBe('postgresql://localhost:5432');

@@ -5,13 +5,12 @@ import prisma from "@/lib/prisma";
 import { apiHandler } from "@/lib/api-handler";
 import { UnauthorizedError, ValidationError } from "@/lib/errors";
 import { encrypt } from "@/lib/security";
-import { DAILY_EMAIL_LIMIT } from "@/lib/mail/providerLimits";
+import { getDailyEmailLimit } from "@/lib/mail/providerLimits";
 import { getOrCreateWorkspace } from "@/lib/workspace";
 
 const MASK = "••••••••";
 
 const SettingsSchema = z.object({
-  resendApiKey: z.string().optional(),
   smtpHost: z.string().optional().nullable(),
   smtpPort: z.number().int().min(1).max(65535).optional().nullable(),
   smtpUser: z.string().optional().nullable(),
@@ -28,6 +27,8 @@ export const GET = apiHandler(async () => {
 
   const { user } = await getOrCreateWorkspace(userId);
 
+  const effectiveLimit = getDailyEmailLimit();
+
   // Calculate today's quota
   const startOfToday = new Date();
   startOfToday.setUTCHours(0, 0, 0, 0);
@@ -40,17 +41,16 @@ export const GET = apiHandler(async () => {
     },
   });
 
-  const remaining = Math.max(0, DAILY_EMAIL_LIMIT - emailsSentToday);
+  const remaining = Math.max(0, effectiveLimit - emailsSentToday);
 
   return NextResponse.json({
-    resendApiKey: user.resendApiKey ? MASK : null,
     smtpHost: user.smtpHost,
     smtpPort: user.smtpPort,
     smtpUser: user.smtpUser,
     smtpPassword: user.smtpPassword ? MASK : null,
     senderEmail: user.senderEmail,
     senderName: user.senderName,
-    quota: { used: emailsSentToday, limit: DAILY_EMAIL_LIMIT, remaining },
+    quota: { used: emailsSentToday, limit: effectiveLimit, remaining },
   });
 });
 
@@ -68,6 +68,16 @@ export const POST = apiHandler(async (req: Request) => {
   }
 
   const data = validation.data;
+
+  // ── Component 5: Resend sandbox sender validation ─────────────────────
+  // Catch invalid sender addresses at save time instead of at send time.
+  if (data.senderEmail && data.senderEmail.toLowerCase().includes("resend.dev")) {
+    throw new ValidationError(
+      "Cannot use a Resend sandbox address (e.g. onboarding@resend.dev) as your sender email. " +
+      "Please verify a custom domain in your Resend dashboard and use that address instead."
+    );
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const updatePayload: Record<string, any> = {};
 
@@ -75,9 +85,7 @@ export const POST = apiHandler(async (req: Request) => {
   // - "••••••••" → skip (user didn't change it)
   // - "" (empty) → set to null (clear the key)
   // - new string → encrypt() it → save
-  if (data.resendApiKey !== undefined && data.resendApiKey !== MASK) {
-    updatePayload.resendApiKey = data.resendApiKey === "" ? null : encrypt(data.resendApiKey);
-  }
+
   if (data.smtpPassword !== undefined && data.smtpPassword !== MASK) {
     updatePayload.smtpPassword = data.smtpPassword === "" ? null : encrypt(data.smtpPassword);
   }

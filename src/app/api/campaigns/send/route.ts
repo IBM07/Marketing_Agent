@@ -13,7 +13,7 @@ import {
   QuotaError,
 } from "@/lib/errors";
 import { dispatchEmailBatch } from "@/lib/mail/dispatcher";
-import { DAILY_EMAIL_LIMIT } from "@/lib/mail/providerLimits";
+import { getDailyEmailLimit } from "@/lib/mail/providerLimits";
 import { logger } from "@/lib/logger";
 import { getOrCreateWorkspace } from "@/lib/workspace";
 
@@ -111,10 +111,16 @@ export const POST = apiHandler(async (req: Request) => {
     },
   });
 
-  const remaining = Math.max(0, DAILY_EMAIL_LIMIT - emailsSentToday);
+  // Determine BYOK status early so we can compute the correct quota ceiling
+  const hasByokConfig =
+    dbUser.resendApiKey ||
+    (dbUser.smtpHost && dbUser.smtpUser);
+  const effectiveLimit = getDailyEmailLimit();
+
+  const remaining = Math.max(0, effectiveLimit - emailsSentToday);
 
   if (remaining === 0) {
-    throw new QuotaError("Daily limit reached. Try again after 24 hours.", emailsSentToday, DAILY_EMAIL_LIMIT);
+    throw new QuotaError("Daily limit reached. Try again after 24 hours.", emailsSentToday, effectiveLimit);
   }
 
   // ── Slice recipients to remaining quota ────────────────────────────────
@@ -131,11 +137,6 @@ export const POST = apiHandler(async (req: Request) => {
     senderName: dbUser.senderName,
     resendApiKey: dbUser.resendApiKey,
   };
-
-  // If user has no custom credentials configured, fall back to platform Resend key
-  const hasByokConfig =
-    userMailConfig.resendApiKey ||
-    (userMailConfig.smtpHost && userMailConfig.smtpUser);
 
   // ── Detect provider for correct ID field + SMTP completion ─────────────
   const isSmtpSend = !!(userMailConfig.smtpHost && userMailConfig.smtpUser && !userMailConfig.resendApiKey);
@@ -298,7 +299,7 @@ export const POST = apiHandler(async (req: Request) => {
     sent: successfulSends,
     skipped: recipientsSkipped.length,
     unsubscribed: unsubEmails.size,
-    quota: { used: emailsSentToday + successfulSends, limit: DAILY_EMAIL_LIMIT, remaining: remaining - successfulSends },
+    quota: { used: emailsSentToday + successfulSends, limit: effectiveLimit, remaining: remaining - successfulSends },
     isPartial: recipientsSkipped.length > 0,
   });
 });

@@ -88,6 +88,45 @@ function hasEnoughDigits(phone: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Cloudflare email decode
+// ---------------------------------------------------------------------------
+
+/**
+ * Decodes Cloudflare's cf-email obfuscation (data-cfemail attribute).
+ *
+ * Cloudflare protects emails by encoding each byte as hex and XORing
+ * against a random key byte (first 2 hex chars of the encoded string).
+ * This function finds all encoded values and replaces them with the
+ * decoded email address directly in the HTML string.
+ *
+ * Called on raw HTML BEFORE Cheerio / regex extraction so that the
+ * downstream pipeline sees the real email addresses.
+ *
+ * @param html  Raw HTML string potentially containing data-cfemail attributes.
+ * @returns     HTML with all cf-email values replaced by decoded email strings.
+ */
+export function decodeCfEmails(html: string): string {
+  return html.replace(
+    /data-cfemail="([a-f0-9]+)"/gi,
+    (_, encoded: string) => {
+      try {
+        const key = parseInt(encoded.substring(0, 2), 16);
+        const decoded = (encoded.substring(2).match(/.{2}/g) ?? [])
+          .map((hex: string) => String.fromCharCode(parseInt(hex, 16) ^ key))
+          .join("");
+        // Only return if the decoded string looks like an email
+        if (decoded.includes("@") && decoded.includes(".")) {
+          return decoded;
+        }
+        return `data-cfemail="${encoded}"`; // leave unchanged if decode fails
+      } catch {
+        return `data-cfemail="${encoded}"`; // leave unchanged on error
+      }
+    }
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main export
 // ---------------------------------------------------------------------------
 

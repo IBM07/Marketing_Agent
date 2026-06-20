@@ -15,7 +15,12 @@ Security and privacy are top priorities for this project. If you discover a vuln
 
 **Please do not report security vulnerabilities through public GitHub issues.**
 
-Instead, please report them privately by emailing me. We take all security vulnerabilities seriously and will work to resolve them rapidly.
+Instead, please report them privately via one of the following channels:
+
+- **Email:** [ibrahimaejaz@gmail.com](mailto:ibrahimaejaz@gmail.com)
+- **GitHub Private Vulnerability Reporting:** [Report a vulnerability](https://github.com/IBM07/Marketing_Agent/security/advisories/new)
+
+We take all security vulnerabilities seriously and will work to resolve them rapidly.
 
 ### What to include in your report
 

@@ -28,6 +28,7 @@ jobs:
         run: npm run build
         env:
           NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_valid
+          CLERK_PUBLISHABLE_KEY: pk_test_valid
           CLERK_SECRET_KEY: sk_test_valid
           DATABASE_URL: "postgresql://dummy:dummy@localhost:5432/dummy"
           GROQ_API_KEY: gsk_dummy
@@ -60,6 +61,7 @@ jobs:
         env:
           DATABASE_URL: "postgresql://dummy:dummy@localhost:5432/dummy"
           NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_valid
+          CLERK_PUBLISHABLE_KEY: pk_test_valid
           CLERK_SECRET_KEY: sk_test_valid
           GROQ_API_KEY: gsk_dummy
           RESEND_API_KEY: re_dummy

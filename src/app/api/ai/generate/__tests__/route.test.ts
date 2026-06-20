@@ -40,56 +40,56 @@ describe('AI Generate API', () => {
       method: 'POST',
       body: JSON.stringify({ prompt: 'test' }),
     });
-    const response = await POST(request);
+    const response = await POST(request, {});
 
-    expect(response.status).toBe(401);
+    expect(response!.status).toBe(401);
   });
 
   it('should return 429 if rate limited', async () => {
     vi.mocked(auth).mockResolvedValue({ userId: 'user_123' } as any);
     
     const { rateLimiter } = await import('@/lib/rate-limit');
-    vi.spyOn(rateLimiter, 'check').mockReturnValue({ success: false });
+    vi.spyOn(rateLimiter, 'check').mockReturnValue({ success: false, remaining: 0 });
 
     const request = new Request('http://localhost/api/ai/generate', {
       method: 'POST',
       body: JSON.stringify({ prompt: 'test' }),
     });
-    const response = await POST(request);
+    const response = await POST(request, {});
 
-    expect(response.status).toBe(429);
-    expect(await response.json()).toEqual({ error: 'Too Many Requests', code: 'RATE_LIMIT_EXCEEDED' });
+    expect(response!.status).toBe(429);
+    expect(await response!.json()).toEqual({ error: 'Too Many Requests', code: 'RATE_LIMIT_EXCEEDED' });
   });
 
   it('should return 400 if validation fails', async () => {
     vi.mocked(auth).mockResolvedValue({ userId: 'user_123' } as any);
     const { rateLimiter } = await import('@/lib/rate-limit');
-    vi.spyOn(rateLimiter, 'check').mockReturnValue({ success: true });
+    vi.spyOn(rateLimiter, 'check').mockReturnValue({ success: true, remaining: 9 });
 
     const request = new Request('http://localhost/api/ai/generate', {
       method: 'POST',
       body: JSON.stringify({ prompt: '' }), // invalid prompt length
     });
-    const response = await POST(request);
+    const response = await POST(request, {});
 
-    expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: 'Validation failed', code: 'VALIDATION_ERROR' });
+    expect(response!.status).toBe(400);
+    expect(await response!.json()).toEqual({ error: 'Validation failed', code: 'VALIDATION_ERROR' });
   });
 
   it('should handle successful generation', async () => {
     vi.mocked(auth).mockResolvedValue({ userId: 'user_123' } as any);
     const { rateLimiter } = await import('@/lib/rate-limit');
-    vi.spyOn(rateLimiter, 'check').mockReturnValue({ success: true });
+    vi.spyOn(rateLimiter, 'check').mockReturnValue({ success: true, remaining: 9 });
 
     const request = new Request('http://localhost/api/ai/generate', {
       method: 'POST',
       body: JSON.stringify({ prompt: 'test prompt', goal: 'Lead Gen', productName: 'TestProduct' }),
     });
-    const response = await POST(request);
+    const response = await POST(request, {});
     
-    expect(response.status).toBe(200);
-    const data = await response.json();
+    expect(response!.status).toBe(200);
+    const data = await response!.json();
     expect(data).toHaveProperty('subject', 'Test Subject');
     expect(data).toHaveProperty('body', 'Test Body');
   });
-});
+});

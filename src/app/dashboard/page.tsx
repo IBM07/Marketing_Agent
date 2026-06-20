@@ -1,9 +1,17 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { motion } from "framer-motion";
-import { Plus, Activity, ExternalLink, Loader2, Send, CheckCircle } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Plus, Activity, ExternalLink, Loader2, Send, CheckCircle, AlertTriangle, XCircle, X } from "lucide-react";
 import Link from "next/link";
+
+// ── Health Banner Types ─────────────────────────────────────────────────────
+interface HealthWarning {
+  id: string;
+  severity: "error" | "warning";
+  icon: typeof AlertTriangle;
+  message: string;
+}
 
 export default function DashboardOverview() {
   const [stats, setStats] = useState([
@@ -13,6 +21,73 @@ export default function DashboardOverview() {
   ]);
   const [recentCampaigns, setRecentCampaigns] = useState<{ id: string, name: string, status: string }[]>([]);
   const [loading, setLoading] = useState(true);
+  const [healthWarnings, setHealthWarnings] = useState<HealthWarning[]>([]);
+  const [dismissedWarnings, setDismissedWarnings] = useState<Set<string>>(new Set());
+
+  // ── Fetch system health on mount ────────────────────────────────────────
+  useEffect(() => {
+    const fetchHealth = async () => {
+      try {
+        const res = await fetch("/api/health");
+        if (!res.ok) return;
+
+        const health = await res.json();
+        const warnings: HealthWarning[] = [];
+
+        // Database connectivity
+        if (health.db === "error") {
+          warnings.push({
+            id: "db-error",
+            severity: "error",
+            icon: XCircle,
+            message: "🔴 Database connection failed. The application cannot store or retrieve data.",
+          });
+        }
+
+        // Redis connectivity
+        if (health.redis === "error") {
+          warnings.push({
+            id: "redis-error",
+            severity: "error",
+            icon: XCircle,
+            message: "🔴 Redis is not connected. The lead generation pipeline will not work.",
+          });
+        }
+
+        // LLM providers — all not configured
+        if (
+          health.llmProviders &&
+          health.llmProviders.cerebras === "not_configured" &&
+          health.llmProviders.groq === "not_configured" &&
+          health.llmProviders.gemini === "not_configured"
+        ) {
+          warnings.push({
+            id: "llm-none",
+            severity: "warning",
+            icon: AlertTriangle,
+            message:
+              "⚠️ No AI provider configured. Lead extraction is running in limited regex-only mode. Add your Groq API key in .env to unlock full extraction.",
+          });
+        }
+
+        // Serper circuit breaker open
+        if (health.serperCircuit === "open") {
+          warnings.push({
+            id: "serper-circuit",
+            severity: "warning",
+            icon: AlertTriangle,
+            message: "⚠️ Search API circuit breaker is open. Will auto-reset in ~5 minutes.",
+          });
+        }
+
+        setHealthWarnings(warnings);
+      } catch {
+        // Silently ignore — health banner is advisory, not critical
+      }
+    };
+
+    fetchHealth();
+  }, []);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -47,8 +122,42 @@ export default function DashboardOverview() {
     fetchData();
   }, []);
 
+  const dismissWarning = (id: string) => {
+    setDismissedWarnings((prev) => new Set(prev).add(id));
+  };
+
+  const visibleWarnings = healthWarnings.filter((w) => !dismissedWarnings.has(w.id));
+
   return (
     <div className="max-w-6xl mx-auto space-y-8 pb-12">
+      {/* ── System Health Banners ──────────────────────────────────────────── */}
+      <AnimatePresence>
+        {visibleWarnings.map((warning) => (
+          <motion.div
+            key={warning.id}
+            initial={{ opacity: 0, y: -10, height: 0 }}
+            animate={{ opacity: 1, y: 0, height: "auto" }}
+            exit={{ opacity: 0, y: -10, height: 0 }}
+            transition={{ duration: 0.25 }}
+            className={`border backdrop-blur-xl rounded-xl p-4 flex items-start gap-3 ${
+              warning.severity === "error"
+                ? "border-red-500/30 bg-red-500/5 text-red-300"
+                : "border-yellow-500/30 bg-yellow-500/5 text-yellow-300"
+            }`}
+          >
+            <warning.icon className="w-5 h-5 mt-0.5 flex-shrink-0" />
+            <p className="flex-1 text-sm leading-relaxed">{warning.message}</p>
+            <button
+              onClick={() => dismissWarning(warning.id)}
+              className="p-1 rounded-md hover:bg-white/10 transition-colors flex-shrink-0"
+              aria-label={`Dismiss ${warning.id} warning`}
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </motion.div>
+        ))}
+      </AnimatePresence>
+
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Overview</h1>

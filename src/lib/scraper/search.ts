@@ -1,4 +1,79 @@
 import { logger } from "../logger";
+import { redisConnection } from "../queue/index";
+
+// ---------------------------------------------------------------------------
+// Serper.dev Circuit Breaker
+//
+// Tracks consecutive Serper API failures in Redis. After 3 consecutive
+// failures, the circuit "opens" and all calls immediately throw a
+// descriptive error for 5 minutes — preventing cascading failures and
+// wasted queue retries while the upstream service is down.
+//
+// Keys:
+//   serper:circuit:failures  — counter of consecutive failures (no TTL)
+//   serper:circuit:open      — flag set to "1" with 300s TTL when circuit opens
+// ---------------------------------------------------------------------------
+
+const CIRCUIT_FAILURE_KEY = "serper:circuit:failures";
+const CIRCUIT_OPEN_KEY = "serper:circuit:open";
+const CIRCUIT_FAILURE_THRESHOLD = 3;
+const CIRCUIT_OPEN_TTL_SECONDS = 300; // 5 minutes
+
+export class SerperCircuitOpenError extends Error {
+  constructor() {
+    super(
+      "Serper.dev circuit breaker is OPEN — too many consecutive failures. " +
+        "The circuit will auto-reset in up to 5 minutes. Check Serper.dev status."
+    );
+    this.name = "SerperCircuitOpenError";
+  }
+}
+
+/**
+ * Check if the Serper circuit breaker is currently open.
+ * Returns true if requests should be blocked.
+ */
+export async function isSerperCircuitOpen(): Promise<boolean> {
+  try {
+    const flag = await redisConnection.get(CIRCUIT_OPEN_KEY);
+    return flag === "1";
+  } catch {
+    // If Redis itself is down, fail-open — allow requests through
+    return false;
+  }
+}
+
+/**
+ * Record a Serper failure. If consecutive failures >= threshold,
+ * open the circuit breaker.
+ */
+async function recordSerperFailure(): Promise<void> {
+  try {
+    const count = await redisConnection.incr(CIRCUIT_FAILURE_KEY);
+    if (count >= CIRCUIT_FAILURE_THRESHOLD) {
+      await redisConnection.set(CIRCUIT_OPEN_KEY, "1", "EX", CIRCUIT_OPEN_TTL_SECONDS);
+      logger.warn(
+        `[SERPER_CIRCUIT] Circuit OPENED after ${count} consecutive failures. ` +
+          `Will auto-reset in ${CIRCUIT_OPEN_TTL_SECONDS}s.`
+      );
+    }
+  } catch (err) {
+    logger.warn(
+      `[SERPER_CIRCUIT] Failed to record failure in Redis: ${err instanceof Error ? err.message : String(err)}`
+    );
+  }
+}
+
+/**
+ * Record a Serper success and reset the failure counter.
+ */
+async function recordSerperSuccess(): Promise<void> {
+  try {
+    await redisConnection.del(CIRCUIT_FAILURE_KEY);
+  } catch {
+    // Best-effort — counter reset failure is non-critical
+  }
+}
 
 /**
  * Checks whether a URL should be filtered out.
@@ -55,8 +130,19 @@ function isFilteredUrl(foundUrl: string): boolean {
  *
  * Replaces the old Jina AI (s.jina.ai) implementation.
  * Requires SERPER_API_KEY environment variable.
+ *
+ * Protected by a Redis-backed circuit breaker: after 3 consecutive
+ * failures, all calls short-circuit for 5 minutes to prevent cascading
+ * retries and wasted queue processing.
  */
 export async function searchWeb(query: string, maxResults: number = 15): Promise<string[]> {
+  // ── Circuit breaker gate ───────────────────────────────────────────
+  const circuitOpen = await isSerperCircuitOpen();
+  if (circuitOpen) {
+    logger.warn(`[WEB_SEARCH] Circuit breaker OPEN — rejecting query: "${query}"`);
+    throw new SerperCircuitOpenError();
+  }
+
   const apiKey = process.env.SERPER_API_KEY;
 
   if (!apiKey) {
@@ -79,12 +165,16 @@ export async function searchWeb(query: string, maxResults: number = 15): Promise
 
     if (!response.ok) {
       const errorText = await response.text();
+      // Let the outer catch handle circuit breaker recording
       throw new Error(`Serper.dev search failed: ${response.status} ${response.statusText}. Response: ${errorText}`);
     }
 
     const data = await response.json() as {
       organic?: { link: string; title: string }[];
     };
+
+    // ── Success — reset circuit breaker ─────────────────────────────
+    await recordSerperSuccess();
 
     const rawResults = data.organic ?? [];
     const urls: string[] = [];
@@ -102,6 +192,10 @@ export async function searchWeb(query: string, maxResults: number = 15): Promise
     logger.info(`[WEB_SEARCH] Serper returned ${rawResults.length} results, ${urls.length} passed filter for query: "${query}"`);
     return urls;
   } catch (error) {
+    // Only record failure if it's NOT already a circuit-open error
+    if (!(error instanceof SerperCircuitOpenError)) {
+      await recordSerperFailure();
+    }
     logger.error("[WEB_SEARCH_ERROR]", error);
     throw new Error(`Web search failed for query: ${query}. Details: ${error instanceof Error ? error.message : String(error)}`);
   }

@@ -21,6 +21,8 @@ import {
   type FailedJobData,
 } from "../index";
 import { extractLeadsFromUrl } from "../../scraper/extractor";
+import { validateEmail, MIN_EMAIL_CONFIDENCE } from "../../scraper/email-validator";
+import { normalizeCompanyName, isDuplicateCompany } from "../../scraper/deduplicator";
 import { logger } from "../../logger";
 import prisma from "../../prisma";
 
@@ -46,11 +48,38 @@ export function startExtractionWorker() {
       // Task 2.2: filteredText is now part of the canonical return type — no cast needed.
       const { data, filteredText } = result;
 
-      // Step 2: Upsert leads into DB
+      // Step 2: Validate and upsert leads into DB
       const savedLeadIds: { leadId: string; filteredText: string }[] = [];
+
+      // Phase A2: Track normalized company names seen in THIS extraction batch
+      // to prevent fuzzy duplicates within the same URL's contacts.
+      const seenCompanyNames = new Set<string>();
 
       for (const contact of data.contacts) {
         if (!contact.email || !contact.email.includes("@")) continue;
+
+        // Phase A1: Email MX validation — reject disposable/dead domains
+        const emailCheck = await validateEmail(contact.email.trim().toLowerCase());
+        if (emailCheck.confidence < MIN_EMAIL_CONFIDENCE) {
+          logger.info(
+            `[EXTRACTION_WORKER] Rejected email ${contact.email}: ${emailCheck.reason} (confidence: ${emailCheck.confidence})`
+          );
+          continue;
+        }
+
+        // Phase A2: Company deduplication — skip if fuzzy duplicate exists
+        const companyName = data.companyName || "Unknown";
+        if (companyName !== "Unknown" && isDuplicateCompany(companyName, seenCompanyNames)) {
+          logger.info(
+            `[EXTRACTION_WORKER] Skipped duplicate company "${companyName}" for email ${contact.email}`
+          );
+          continue;
+        }
+        // Track this company name for future dedup checks within the batch
+        const normalized = normalizeCompanyName(companyName);
+        if (normalized && normalized !== "unknown") {
+          seenCompanyNames.add(normalized);
+        }
 
         try {
           const lead = await prisma.lead.upsert({
