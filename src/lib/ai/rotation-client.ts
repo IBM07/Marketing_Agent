@@ -55,7 +55,8 @@ export class KeyRotationLLMClient {
   async extractWithCerebras(
     prompt: string,
     content: string,
-    userCustomKey?: string
+    userCustomKey?: string,
+    context: string = "extraction"
   ): Promise<LeadExtractionPayload | null> {
     const keysToUse = userCustomKey ? [userCustomKey.trim()] : [...this.cerebrasKeys];
     if (keysToUse.length === 0) {
@@ -103,7 +104,7 @@ export class KeyRotationLLMClient {
 
         const data = await response.json();
         const extracted = JSON.parse(data.choices[0].message.content);
-        logger.info("[AI_ROTATION] Cerebras extraction successful.");
+        logger.info(`[AI_ROTATION] Cerebras ${context} successful.`);
         return extracted as LeadExtractionPayload;
       } catch (err) {
         logger.warn(`[AI_ROTATION] Cerebras key failure: ${err instanceof Error ? err.message : String(err)}. Retrying failover...`);
@@ -116,9 +117,10 @@ export class KeyRotationLLMClient {
   }
 
   async extractWithGroq(
-    prompt: string, 
-    content: string, 
-    userCustomKey?: string
+    prompt: string,
+    content: string,
+    userCustomKey?: string,
+    context: string = "extraction"
   ): Promise<LeadExtractionPayload | null> {
     const keysToUse = userCustomKey ? [userCustomKey.trim()] : [...this.groqKeys];
     if (keysToUse.length === 0) {
@@ -167,7 +169,7 @@ export class KeyRotationLLMClient {
 
         const data = await response.json();
         const extracted = JSON.parse(data.choices[0].message.content);
-        logger.info("[AI_ROTATION] Groq extraction successful.");
+        logger.info(`[AI_ROTATION] Groq ${context} successful.`);
         return extracted as LeadExtractionPayload;
       } catch (err) {
         logger.warn(`[AI_ROTATION] Groq key failure: ${err instanceof Error ? err.message : String(err)}. Retrying failover...`);

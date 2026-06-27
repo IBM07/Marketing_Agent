@@ -22,7 +22,7 @@ HyperDrive AI is a **multi-stage async pipeline** that converts a natural langua
 
 ```
 User Browser
-    │  POST /api/pipeline/start  { prompt }
+    │  POST /api/agent  { prompt }
     ▼
 Next.js App Server
     │  Creates PipelineJob (status=PENDING) in PostgreSQL
@@ -35,9 +35,13 @@ BullMQ Workers (separate Docker container)                             │
     │                                                                   │
     ├─ Discovery Worker  ─► Extraction Worker  ─► Validation Worker ──►┘
     │
+    ├─ Email Status Poller  (repeatable heartbeat, every 5 min)
+    │
     ▼
-PostgreSQL  (PipelineJob + Lead records)
+PostgreSQL  (PipelineJob + Lead + EmailLog records)
 ```
+
+Clients poll `GET /api/agent/status?jobId=<id>` for real-time progress. No webhooks are required for local or Docker deployments.
 
 ---
 
@@ -45,7 +49,7 @@ PostgreSQL  (PipelineJob + Lead records)
 
 ```mermaid
 flowchart TD
-    A([User submits prompt]) --> B[POST /api/pipeline/start]
+    A([User submits prompt]) --> B[POST /api/agent]
     B --> C{Create PipelineJob\nstatus = PENDING}
     C --> D[Enqueue DiscoveryJob\ninto BullMQ]
 
@@ -86,7 +90,6 @@ flowchart TD
     style K fill:#ff6b6b,color:#fff
     style AA fill:#ff6b6b,color:#fff
     style AF fill:#51cf66,color:#fff
-    style AF fill:#51cf66,color:#fff
 ```
 
 ---
@@ -99,6 +102,7 @@ flowchart LR
         DQ[(discovery\nqueue)]
         EQ[(extraction\nqueue)]
         VQ[(validation\nqueue)]
+        ESQ[(email-status\nqueue)]
         DLQ[(dead-letter\nqueue)]
     end
 
@@ -107,11 +111,14 @@ flowchart LR
     DW -- addBulk N jobs --> EQ
     EQ -- Worker processes --> EW[Extraction Worker\nconcurrency: 5]
     EW -- addJob --> VQ
-    VQ -- Worker processes --> VW[Validation Worker\nconcurrency: 3]
+    VQ -- Worker processes --> VW[Validation Worker\nconcurrency: 1]
+
+    App -- repeatable every 5 min --> ESQ
+    ESQ -- Worker processes --> ESW[Email Status Poller\nconcurrency: 1]
 
     DW -- failed after 3 retries --> DLQ
     EW -- failed after 3 retries --> DLQ
-    VW -- failed after 3 retries --> DLQ
+    VW -- failed after 1 attempt --> DLQ
 
     DLQ -- manual review / replay --> DQ
 
@@ -125,8 +132,11 @@ flowchart LR
 |---|---|---|---|
 | `discovery` | 2 | 3 | 5s exponential |
 | `extraction` | 5 | 3 | 5s exponential |
-| `validation` | 3 | 3 | 5s exponential |
+| `validation` | 1 | 1 (best-effort) | — |
+| `email-status` | 1 | 1 | Repeatable every 5 min |
 | `dlq` | — | 0 (terminal) | — |
+
+> **Why validation concurrency is 1:** Each validation job runs 3 sequential LLM calls (Criteria → Intent → Quality agents). Concurrency > 1 would cause 3× API quota burn simultaneously. A 3-second cooldown is enforced between jobs to further protect token budgets.
 
 ---
 
@@ -166,15 +176,32 @@ flowchart LR
 
 ### 3. Validation Worker (`validation.worker.ts`)
 
-**Input:** `{ jobId, workspaceId, email, companyName, ... }`
+**Input:** `{ jobId, workspaceId, leadId, sourceUrl, filteredText, targetCriteria }`
 
 **Responsibilities:**
 1. **Email MX validation** — `validateEmail()` checks disposable domain blocklist + DNS MX record lookup. Drops leads with confidence < 0.60.
-2. **3-Agent validation** — three independent LLM calls each score the lead's accuracy. Only leads with consensus pass.
-3. **Database persistence** — `prisma.lead.upsert()` with `isEnriched: true`.
-4. **Job completion tracking** — atomically increments `processedUrls`. When `processedUrls === totalUrls`, marks `PipelineJob` as `DONE`.
+2. **3-Agent validation** — three independent LLM calls (Criteria, Intent, Quality agents) each score the lead's accuracy. Agents run **sequentially** to minimise token quota burn. Only leads with Criteria + Quality consensus are approved; Intent is a scoring bonus.
+3. **Anti-hallucination guard** — each agent citation is verified to exist verbatim in the source text before counting toward approval.
+4. **Database persistence** — `prisma.lead.update()` with `isEnriched: true` for approved leads.
+5. **Job completion tracking** — atomically decrements `pendingValidations`. When `pendingValidations <= 0` and `processedUrls >= totalUrls`, marks `PipelineJob` as `DONE` via a raw SQL compare-and-swap to prevent race conditions.
 
 **Output:** Verified `Lead` record in PostgreSQL.
+
+---
+
+### 4. Email Status Poller (`email-status.worker.ts`)
+
+**Input:** `{ triggeredAt }` — periodic heartbeat payload (no user data)
+
+**Responsibilities:**
+1. **Repeatable job** — BullMQ registers a repeatable job on startup that fires every **5 minutes**. No external cron or webhook URL required.
+2. **Query** — fetches all `EmailLog` records with status `SENT`, `DELIVERED`, or `OPENED` that have a valid `resendId` and were sent within the last 7 days. Capped at 50 records per cycle to stay within Resend rate limits.
+3. **Poll Resend API** — calls `GET /emails/{resendId}` for each log using the user's BYOK Resend key (decrypted from AES-256-GCM storage) or the platform fallback key.
+4. **Status update** — updates `EmailLog.status` only when the new status is higher in the lifecycle (`SENT → DELIVERED → OPENED → CLICKED`). Prevents regression on concurrent polls.
+5. **Auto-unsubscribe** — if `COMPLAINED` is detected, the recipient email is automatically added to the workspace `Unsubscribe` table.
+6. **Campaign completion** — when all emails in a campaign reach a terminal status, marks the campaign `COMPLETED`.
+
+**Output:** Updated `EmailLog` records in PostgreSQL. Replaces the need for Resend webhooks on self-hosted / localhost deployments.
 
 ---
 
@@ -184,11 +211,11 @@ The AI cascade provides automatic failover across three LLM providers. Each prov
 
 ```mermaid
 flowchart LR
-    A[LLM Request] --> B{Cerebras\nllama-3.3-70b\nfree 1M tokens/day}
+    A[LLM Request] --> B{Cerebras\ngpt-oss-120b\nfree 1M tokens/day}
     B -- success --> Z([Return result])
-    B -- fail/quota --> C{Groq\nmeta-llama-3\nfree tier}
+    B -- fail/quota --> C{Groq\nllama-3.3-70b-versatile\nfree tier}
     C -- success --> Z
-    C -- fail/quota --> D{Gemini Flash\nGoogle\nfree tier}
+    C -- fail/quota --> D{Gemini\ngemini-2.5-flash-lite\nGoogle free tier}
     D -- success --> Z
     D -- quota exhausted --> E([Throw — all providers exhausted])
 
@@ -200,11 +227,11 @@ flowchart LR
 
 | Provider | Model | Free Tier | Primary Use |
 |---|---|---|---|
-| Cerebras | `llama-3.3-70b` | 1M tokens/day | Orchestration, extraction |
-| Groq | `meta-llama/llama-4-scout-17b-16e-instruct` | ~14k req/day | Fallback extraction, sanity gate |
-| Gemini | `gemini-2.0-flash` | 15 req/min | Final fallback |
+| Cerebras | `gpt-oss-120b` | 1M tokens/day | Orchestration, extraction, validation |
+| Groq | `llama-3.3-70b-versatile` | ~14k req/day | Fallback extraction, sanity gate |
+| Gemini | `gemini-2.5-flash-lite` | 15 req/min | Final fallback |
 
-Configured in `src/lib/ai/rotation-client.ts`. Multi-key rotation (comma-separated `GROQ_API_KEYS`) is supported for higher throughput.
+Configured in `src/lib/ai/rotation-client.ts`. Multi-key rotation (comma-separated `GROQ_API_KEYS`, `CEREBRAS_API_KEYS`, `GEMINI_API_KEYS`) is supported for higher throughput.
 
 ---
 
@@ -235,7 +262,7 @@ flowchart TD
 | No-reply filter | Pattern blocklist (`noreply`, `support`, `info`) | `filter.ts` |
 | Company deduplication | Jaro-Winkler fuzzy match (threshold 0.90) | `deduplicator.ts` |
 | Email MX validation | DNS MX lookup + disposable domain blocklist | `email-validator.ts` |
-| 3-Agent validation | 3 independent LLM accuracy scores | `validation.worker.ts` |
+| 3-Agent validation | 3 sequential LLM accuracy scores (Criteria + Intent + Quality) | `validation.worker.ts` |
 
 ---
 
@@ -253,7 +280,7 @@ Redis keys:
 
 ### Dead Letter Queue (DLQ)
 
-Jobs that fail all 3 retry attempts are moved to the `dlq` BullMQ queue with full error context. DLQ entries can be manually inspected and replayed via the BullMQ dashboard or a custom admin script.
+Jobs that fail all retry attempts are moved to the `dlq` BullMQ queue with full error context. DLQ entries can be manually inspected and replayed via the BullMQ dashboard or a custom admin script.
 
 ### `/api/health` Endpoint
 

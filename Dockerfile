@@ -44,7 +44,16 @@ RUN npx prisma generate
 # Build Next.js in standalone mode.
 RUN npm run build
 
-# Stage 3: Production runner
+# Stage 3: Database migration runner (init-container pattern)
+# Uses the FULL builder image with all node_modules so prisma db push has every
+# transitive dependency it needs (valibot, @prisma/dev, etc.).
+# This is a short-lived container — it pushes the schema and exits.
+# docker-compose runs this BEFORE starting app or worker.
+FROM builder AS migrate
+WORKDIR /app
+CMD ["npx", "prisma", "db", "push"]
+
+# Stage 4: Production runner
 FROM node:20-alpine AS runner
 RUN apk add --no-cache openssl curl
 WORKDIR /app
@@ -63,12 +72,8 @@ COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
 
-# Copy Prisma schema (needed for `prisma db push` at container start)
+# Copy Prisma schema (needed by the generated Prisma Client at runtime)
 COPY --from=builder /app/prisma ./prisma
-
-# Copy the Docker entrypoint script
-COPY --from=builder /app/scripts/docker-entrypoint.sh ./scripts/docker-entrypoint.sh
-RUN chmod +x ./scripts/docker-entrypoint.sh
 
 # Set correct ownership.
 RUN chown -R nextjs:nodejs /app
@@ -80,4 +85,4 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
   CMD curl -f http://localhost:3000/api/health || exit 1
 
-CMD ["sh", "scripts/docker-entrypoint.sh"]
+CMD ["node", "server.js"]

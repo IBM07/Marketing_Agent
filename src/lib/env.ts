@@ -6,7 +6,7 @@ const envSchema = z.object({
   CLERK_SECRET_KEY: z.string().startsWith('sk_'),
   GROQ_API_KEY: z.string().startsWith('gsk_'),
   RESEND_API_KEY: z.string().startsWith('re_').optional(),
-  CLERK_WEBHOOK_SECRET: z.string().min(1),
+  CLERK_WEBHOOK_SECRET: z.string().min(1).optional(),
   RESEND_FROM_EMAIL: z.string().email().optional(),
   ENCRYPTION_KEY: z.string().min(32, 'ENCRYPTION_KEY must be at least 32 characters'),
   CRON_SECRET: z.string().min(16, 'CRON_SECRET must be at least 16 characters'),

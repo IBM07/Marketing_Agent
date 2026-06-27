@@ -88,3 +88,6 @@ cv_ibm/
 post_mvp_prod/
 agent_rules.md
 implementation_plan.md.resolved
+
+# AI Agents & Workflows
+.agents/

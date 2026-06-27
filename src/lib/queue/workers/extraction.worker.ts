@@ -37,11 +37,9 @@ export function startExtractionWorker() {
       // Step 1: Scrape & extract
       const result = await extractLeadsFromUrl(url, targetCriteria);
 
-      // Always increment processedUrls regardless of whether data was found
-      await incrementProcessed(jobId);
-
       if (!result || !result.data || !Array.isArray(result.data.contacts)) {
         logger.info(`[EXTRACTION_WORKER] No contacts extracted from ${url}`);
+        await markUrlProcessedAndCheckDone(jobId);
         return;
       }
 
@@ -124,7 +122,10 @@ export function startExtractionWorker() {
         }
       }
 
-      if (savedLeadIds.length === 0) return;
+      if (savedLeadIds.length === 0) {
+        await markUrlProcessedAndCheckDone(jobId);
+        return;
+      }
 
       // Increment leadsFound counter
       await prisma.pipelineJob.update({
@@ -159,6 +160,8 @@ export function startExtractionWorker() {
       logger.info(
         `[EXTRACTION_WORKER] Saved ${savedLeadIds.length} leads from ${url}, enqueued validation`
       );
+
+      await markUrlProcessedAndCheckDone(jobId);
     },
     {
       connection: connectionConfig,
@@ -185,7 +188,7 @@ export function startExtractionWorker() {
       });
 
       // Still count this URL as "processed" so the job can eventually finish
-      await incrementProcessed(job.data.jobId);
+      await markUrlProcessedAndCheckDone(job.data.jobId);
     }
   });
 
@@ -194,14 +197,29 @@ export function startExtractionWorker() {
 }
 
 /**
- * Atomically increments processedUrls.
- * The DONE transition is now handled exclusively by the validation worker
- * via decrementValidationAndCheckDone() to avoid marking jobs DONE
- * before validation completes.
+ * Atomically increments processedUrls and checks if the pipeline job is DONE.
+ * We must check this here as well, because if an extraction job finds 0 leads,
+ * no validation jobs are ever queued for it, so the validation worker can't mark it done.
  */
-async function incrementProcessed(jobId: string): Promise<void> {
+async function markUrlProcessedAndCheckDone(jobId: string): Promise<void> {
   await prisma.pipelineJob.update({
     where: { id: jobId },
     data: { processedUrls: { increment: 1 } },
   });
+
+  const result = await prisma.$executeRaw`
+    UPDATE "PipelineJob"
+    SET    status = 'DONE'
+    WHERE  id = ${jobId}
+      AND  status = 'RUNNING'
+      AND  "pendingValidations" <= 0
+      AND  "processedUrls" >= "totalUrls"
+      AND  "totalUrls" > 0
+  `;
+
+  if (result > 0) {
+    logger.info(
+      `[EXTRACTION_WORKER] PipelineJob ${jobId} → DONE (all extraction complete, no pending validations)`
+    );
+  }
 }

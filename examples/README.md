@@ -6,7 +6,7 @@ Copy-paste any of the prompts below directly into the HyperDrive dashboard to ru
 
 ## Quick Start
 
-1. Start the app: `docker compose up`
+1. Start the app: `docker compose up --build -d`
 2. Open `http://localhost:3000`
 3. Sign in and create a workspace
 4. Paste any prompt below into the **"New Discovery Job"** input

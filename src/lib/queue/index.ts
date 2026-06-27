@@ -6,10 +6,11 @@
  * IORedis connection pool per process.
  *
  * Queue topology:
- *   discoveryQueue  — receives a raw prompt → produces a list of target URLs
- *   extractionQueue — receives a URL + jobId → produces extracted contacts
- *   validationQueue — receives leadId + filteredText → persists / approves lead
- *   dlq             — dead-letter: jobs that failed 3 times land here
+ *   discoveryQueue    — receives a raw prompt → produces a list of target URLs
+ *   extractionQueue   — receives a URL + jobId → produces extracted contacts
+ *   validationQueue   — receives leadId + filteredText → persists / approves lead
+ *   emailStatusQueue  — repeatable heartbeat: polls Resend API for email status updates
+ *   dlq               — dead-letter: jobs that failed 3 times land here
  */
 
 import { Queue, QueueEvents } from "bullmq";
@@ -83,6 +84,12 @@ export const validationQueue = new Queue<ValidationJobData>("validation", {
   defaultJobOptions: { ...DEFAULT_JOB_OPTIONS, attempts: 1 }, // validation is best-effort
 });
 
+/** Email status poller: repeatable heartbeat that polls Resend API for open/click/bounce events */
+export const emailStatusQueue = new Queue<EmailStatusPollJobData>("email-status", {
+  connection: connectionConfig,
+  defaultJobOptions: { removeOnComplete: { count: 50 }, removeOnFail: { count: 20 }, attempts: 1 },
+});
+
 /** Dead-letter queue: jobs that exhausted all retries */
 export const dlq = new Queue<FailedJobData>("dlq", {
   connection: connectionConfig,
@@ -121,6 +128,11 @@ export interface ValidationJobData {
   sourceUrl: string;
   filteredText: string;
   targetCriteria: string;
+}
+
+/** Email status poller carries no payload — it's a periodic heartbeat */
+export interface EmailStatusPollJobData {
+  triggeredAt: string; // ISO timestamp for logging/debugging
 }
 
 export interface FailedJobData {

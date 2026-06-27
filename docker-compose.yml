@@ -10,8 +10,9 @@
 # Services:
 #   postgres     — PostgreSQL 16 database (persistent volume)
 #   redis        — Redis message broker for BullMQ queues
-#   app          — Next.js web server (port 3000) — auto-runs Prisma migrations
-#   worker       — BullMQ async pipeline workers (discovery + extraction + validation)
+#   migrate      — Short-lived init container that runs `prisma db push` then exits
+#   app          — Next.js web server (port 3000)
+#   worker       — BullMQ async pipeline workers (discovery + extraction + validation + email-status poller)
 #   browserless  — Optional headless Chrome for JS-rendered site scraping (port 3001)
 #
 # The `app` and `worker` services share the same .env file, Postgres, and Redis.
@@ -41,6 +42,23 @@ services:
       start_period: 10s
       retries: 5
 
+  # ── Database Migration (init-container pattern) ─────────────────────────────
+  # Runs `prisma db push` using the full builder image (all node_modules present),
+  # then exits. App and worker wait for this to complete before starting.
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: migrate
+      args:
+        DATABASE_URL: ${DATABASE_URL:-postgresql://hyperdrive:hyperdrive@postgres:5432/hyperdrive_db}
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://hyperdrive:hyperdrive@postgres:5432/hyperdrive_db}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
   # ── Next.js Web App ────────────────────────────────────────────────────────
   app:
     build:
@@ -48,7 +66,7 @@ services:
       dockerfile: Dockerfile
       args:
         # Pass build-time ARGs so Next.js can embed public env vars at build time
-        DATABASE_URL: postgresql://hyperdrive:hyperdrive@postgres:5432/hyperdrive_db
+        DATABASE_URL: ${DATABASE_URL:-postgresql://hyperdrive:hyperdrive@postgres:5432/hyperdrive_db}
         NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
         CLERK_PUBLISHABLE_KEY: ${CLERK_PUBLISHABLE_KEY}
         NEXT_PUBLIC_CLERK_SIGN_IN_URL: ${NEXT_PUBLIC_CLERK_SIGN_IN_URL:-/sign-in}
@@ -60,13 +78,14 @@ services:
       - "3000:3000"
     env_file: .env
     environment:
-      # Override DB and Redis URLs to point at the services defined in this compose file
-      DATABASE_URL: postgresql://hyperdrive:hyperdrive@postgres:5432/hyperdrive_db
-      REDIS_URL: redis://redis:6379
-      BROWSERLESS_URL: http://browserless:3000
+      # Use DATABASE_URL from .env if set (e.g. Neon/Supabase), otherwise fall back to local Docker postgres.
+      # Same for Redis — falls back to the bundled Redis container if REDIS_URL is not set.
+      DATABASE_URL: ${DATABASE_URL:-postgresql://hyperdrive:hyperdrive@postgres:5432/hyperdrive_db}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      BROWSERLESS_URL: ${BROWSERLESS_URL:-http://browserless:3000}
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
     restart: unless-stopped
@@ -83,16 +102,17 @@ services:
       context: .
       dockerfile: Dockerfile.worker
       args:
-        DATABASE_URL: postgresql://hyperdrive:hyperdrive@postgres:5432/hyperdrive_db
+        DATABASE_URL: ${DATABASE_URL:-postgresql://hyperdrive:hyperdrive@postgres:5432/hyperdrive_db}
     env_file: .env
     environment:
-      # Override DB and Redis URLs to point at the services defined in this compose file
-      DATABASE_URL: postgresql://hyperdrive:hyperdrive@postgres:5432/hyperdrive_db
-      REDIS_URL: redis://redis:6379
-      BROWSERLESS_URL: http://browserless:3000
+      # Use DATABASE_URL from .env if set (e.g. Neon/Supabase), otherwise fall back to local Docker postgres.
+      # Same for Redis — falls back to the bundled Redis container if REDIS_URL is not set.
+      DATABASE_URL: ${DATABASE_URL:-postgresql://hyperdrive:hyperdrive@postgres:5432/hyperdrive_db}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      BROWSERLESS_URL: ${BROWSERLESS_URL:-http://browserless:3000}
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
     restart: unless-stopped

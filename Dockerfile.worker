@@ -3,7 +3,7 @@
 #
 # Standalone BullMQ worker image.
 #
-# This runs ONLY the async pipeline workers (Discovery → Extraction → Validation).
+# This runs ONLY the async pipeline workers (Discovery → Extraction → Validation + Email Status Poller).
 # It does NOT serve any HTTP traffic.
 #
 # Deploy as a separate DigitalOcean App Platform "Worker" component that points

@@ -16,6 +16,31 @@ import { dispatchEmailBatch } from "@/lib/mail/dispatcher";
 import { getDailyEmailLimit } from "@/lib/mail/providerLimits";
 import { logger } from "@/lib/logger";
 import { getOrCreateWorkspace } from "@/lib/workspace";
+/**
+ * Detects raw HTTP/HTTPS URLs in plain text and wraps them in HTML anchor tags.
+ * Safely ignores URLs that are already part of an HTML tag (e.g., href="...") 
+ * or are wrapped inside an existing <a> element.
+ */
+function linkifyText(text: string): string {
+  const parts = text.split(/(<[^>]+>)/g);
+  let insideAnchor = false;
+  
+  for (let i = 0; i < parts.length; i++) {
+    if (i % 2 === 1) { // HTML tag
+      if (/^<a\s/i.test(parts[i])) {
+        insideAnchor = true;
+      } else if (/^<\/a>/i.test(parts[i])) {
+        insideAnchor = false;
+      }
+    } else if (!insideAnchor) { // Text node outside of <a>
+      parts[i] = parts[i].replace(
+        /(https?:\/\/[^\s<]+[^<.,:;"')\]\s])/g,
+        '<a href="$1">$1</a>'
+      );
+    }
+  }
+  return parts.join("");
+}
 
 const SendEmailSchema = z.object({
   campaignId: z.string().uuid(),
@@ -155,7 +180,7 @@ export const POST = apiHandler(async (req: Request) => {
       recipientsToSend.map((recipient) => ({
         recipient,
         subject,
-        htmlContent: safeContent.replace(/\n/g, "<br>"),
+        htmlContent: linkifyText(safeContent).replace(/\n/g, "<br>"),
       }))
     );
   } else {
@@ -180,7 +205,7 @@ export const POST = apiHandler(async (req: Request) => {
           from: fromEmail,
           to: [recipient],
           subject,
-          html: safeContent.replace(/\n/g, "<br>"),
+          html: linkifyText(safeContent).replace(/\n/g, "<br>"),
         }))
       );
 

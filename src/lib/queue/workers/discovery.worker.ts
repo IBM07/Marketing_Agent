@@ -117,7 +117,7 @@ Rules:
 - Return ONLY valid JSON. No explanation outside the JSON.`;
 
   try {
-    const result = await llmClient.extractWithGroq(system, prompt);
+    const result = await llmClient.extractWithGroq(system, prompt, undefined, "validation");
     if (result && typeof (result as unknown as { valid: boolean }).valid === "boolean") {
       return result as unknown as { valid: boolean; reason?: string };
     }

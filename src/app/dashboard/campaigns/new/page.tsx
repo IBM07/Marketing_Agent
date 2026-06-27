@@ -54,7 +54,7 @@ export default function NewCampaign() {
       if (isEnter) {
         // Require Ctrl+Enter or Cmd+Enter to proceed globally in this wizard
         if (!hasModifier) return;
-        
+
         e.preventDefault();
         if (step === 1 && recipientsList.length === 0) {
           // Block continue from Step 1 if no leads
@@ -266,6 +266,11 @@ export default function NewCampaign() {
           setTimeout(() => router.push(`/dashboard/campaigns/${campaign.id}`), 2000);
           return;
         }
+
+        if (!sendRes.ok) {
+          throw new Error(sendData.error || sendData.message || "Failed to send emails. Check your mail configuration.");
+        }
+
         // If partial send (some sent, some skipped) — still show success
         if (sendData.isPartial) {
           setIsSaving(false);
@@ -415,8 +420,8 @@ export default function NewCampaign() {
                                     )}
                                     <span className="uppercase tracking-widest">
                                       {jobProgress?.status === "QUEUED" ? "Queued — waiting for worker..." :
-                                       jobProgress?.status === "RUNNING" ? "Pipeline running..." :
-                                       jobProgress?.status === "DONE" ? "Complete!" : "Processing..."}
+                                        jobProgress?.status === "RUNNING" ? "Pipeline running..." :
+                                          jobProgress?.status === "DONE" ? "Complete!" : "Processing..."}
                                     </span>
                                   </div>
                                   <span className="tabular-nums">
