@@ -8,7 +8,7 @@
 
 ## 🎯 Overview
 
-**HyperDrive AI** is a self-hostable, open-source lead generation platform that autonomously searches the web, scrapes publicly available contact information, and builds verified lead lists — all powered by multi-LLM AI agents. It is **not** an enrichment database like Apollo or Hunter; it finds contacts by actually crawling the web in real-time. It features:
+**HyperDrive AI** is a self-hostable, open-source lead generation platform that autonomously searches the web in realtime, scrapes publicly available contact information, and builds verified lead lists — all powered by multi-LLM AI agents. It is **not** an enrichment database like Apollo or Hunter; it finds contacts by actually crawling the web in real-time. It features:
 
 - 🔍 **Autonomous Lead Generation Agent** — Natural language prompt → Serper.dev Google Search → URL filtering → Cheerio HTML scrape → Regex extraction (LLM skipped if emails found) → Cerebras/Groq/Gemini fallback chain → PostgreSQL upsert
 - 🤖 **Multi-LLM Key Rotation** — Cerebras (primary, 1M tok/day free) → Groq (secondary) → Gemini (final fallback), with per-key exponential backoff and 429 rotation
